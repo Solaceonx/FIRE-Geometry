@@ -1133,6 +1133,7 @@ def outlier_shape3d(sim_inputs, output_file, cutoff_radius = 100, cm = [0, 0, 0]
             star_snapdict['Coordinates'] = new_coords.tolist()
             result = iter_RIT_3d(star_snapdict, initial_max_radius = cutoff_radius, particle_fraction=[1.0])
             # result = iter_RIT_3d(star_snapdict, particle_fraction=[1.0])
+            sim = output_file.replace(".csv", "")
             if result:
                 results.append({
                     'simulation': sim,
@@ -1150,7 +1151,7 @@ def outlier_shape3d(sim_inputs, output_file, cutoff_radius = 100, cm = [0, 0, 0]
                     'max_radius': result['max_radius'],
                     'r_50': result['r_50'],
                     'mass': result['mass'],
-                    'cm': result['cm'],
+                    'cm': result['cm']+cm,
                     'rotation_matrix' : result['rotation_matrix'],
                     'remaining_galaxy': result['remaining_galaxy']
                 })
