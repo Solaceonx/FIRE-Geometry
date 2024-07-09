@@ -686,6 +686,7 @@ def iter_RIT_3d(star_input, max_iterations=30, tolerance=1e-4, initial_max_radiu
     # Scale ellipsoid to 90% of original mass
     coords = np.array(star['Coordinates'])
     masses = np.array(star['Masses'])
+    total_mass = np.sum(star['Masses'])
     r = np.array([ellipsoidal_radius_3d(coord, a, b, c) for coord in coords])
     sorted_indices = np.argsort(r)
     sorted_masses = masses[sorted_indices]
