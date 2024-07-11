@@ -11,7 +11,7 @@
 #
 # Input the centered galaxy data as = (['Coordinates'], ['Masses'])
 # Required packages: 
-# galaxy_tools (see 
+# galaxy_tools (see Courtney Klein https://github.com/courtk32/mockobservation-tools/blob/master/mockobservation_tools/galaxy_tools.py )
 
 
 # set up
@@ -59,7 +59,27 @@ def ellipsoidal_radius_3d(coord, a, b, c):
         The ellipsoidal radius.
     """
     return np.sqrt((coord[0]**2 / (a**2)) + (coord[1]**2 / (b**2)) + (coord[2]**2 / (c**2)))
+def ellipsoidal_radius_3d_vectorized(coordinates, a, b, c):
+    """
+    Calculates the ellipsoidal radius for a given set of points and semi-axes lengths using vectorized operations.
 
+    Parameters
+    ----------
+    coordinates : array_like
+        Array of coordinates of the points (N, 3).
+    a, b, c : float
+        Semi-axis lengths along the x-axis, y-axis, and z-axis respectively.
+
+    Returns
+    -------
+    radii : ndarray
+        Array of ellipsoidal radii.
+    """
+    coordinates = np.array(coordinates)
+    x, y, z = coordinates[:, 0], coordinates[:, 1], coordinates[:, 2]
+    radii = np.sqrt((x**2 / a**2) + (y**2 / b**2) + (z**2 / c**2))
+    return radii
+    
 def principal_axes_2d(matrix):
     """
     Calculate the lengths and directions of the principal axes of an ellipsoid from its covariance  matrix in 2D.
@@ -195,7 +215,7 @@ def reduced_tensor_2d(star_center, a, b):
     
     axis_ratio, ellipticity = vals_2d([A, B])
     return Mr, A, B, axis_ratio, ellipticity
-
+'''
 def reduced_tensor_3d(star_center, a, b, c):
     """
     Calculates the reduced inertia tensor of a galaxy, where particles are downweighted by a factor of
@@ -214,12 +234,55 @@ def reduced_tensor_3d(star_center, a, b, c):
     """
     coordinates = star_center['Coordinates']
     masses = star_center['Masses']
-    ellipsoidal_radii = np.array([ellipsoidal_radius_3d(coord, a, b, c) for coord in coordinates])
-    inverse_radii_squared = np.abs(1.0 / ellipsoidal_radii) # change back to 1.0 / ellipsoidal_radii**2
+    ellipsoidal_radii = np.array([ellipsoidal_radius_3d(coord, a, b, c) for coord in coordinates]) # !!!!
+    inverse_radii_squared = np.abs(1.0 / ellipsoidal_radii**2) # change back to 1.0 / ellipsoidal_radii**2
     weighted_coords = np.array([m * inv_r2 * np.outer(coord, coord) for m, inv_r2, coord in zip(masses, inverse_radii_squared, coordinates)])
     Mr = np.sum(weighted_coords, axis=0) / np.sum(masses * inverse_radii_squared)
     A, B, C, Av, Bv, Cv = principal_axes_3d(Mr)
     
+    axis_ratios, ellipticity, triaxiality = vals([A, B, C])
+
+    return Mr, A, B, C, axis_ratios[0], axis_ratios[1], ellipticity, triaxiality
+'''
+
+def reduced_tensor_3d(star_center, a, b, c):
+    """
+    Calculates the reduced inertia tensor of a galaxy, where particles are downweighted by a factor of
+    1 / r_p^2, where r_p is the ellipsoidal radius of each particle corresponding to the ellipsoid with axes a, b, c. 
+
+    Parameters
+    ----------
+    star_center : dict
+        Dictionary containing 'Coordinates' and 'Masses' of the galaxy.
+
+    a, b, c : float
+        Semi-axis lengths along the x-axis, y-axis, and z-axis respectively.
+    
+    Returns
+    -------
+    Mr : ndarray
+        Reduced inertia tensor matrix.
+    A, B, C : float
+        Principal axes lengths.
+    axis_ratio_1, axis_ratio_2 : float
+        Axis ratios.
+    ellipticity : float
+        Ellipticity of the galaxy.
+    triaxiality : float
+        Triaxiality of the galaxy.
+    """
+    coordinates = star_center['Coordinates']
+    masses = star_center['Masses']
+    
+    # Calculate ellipsoidal radii using vectorized function
+    ellipsoidal_radii = ellipsoidal_radius_3d_vectorized(coordinates, a, b, c)
+    inverse_radii_squared = 1.0 / ellipsoidal_radii**2
+    
+    # Calculate weighted coordinates tensor
+    weighted_coords = masses[:, np.newaxis, np.newaxis] * inverse_radii_squared[:, np.newaxis, np.newaxis] * np.einsum('ij,ik->ijk', coordinates, coordinates)
+    Mr = np.sum(weighted_coords, axis=0) / np.sum(masses * inverse_radii_squared)
+    
+    A, B, C, Av, Bv, Cv = principal_axes_3d(Mr)
     axis_ratios, ellipticity, triaxiality = vals([A, B, C])
 
     return Mr, A, B, C, axis_ratios[0], axis_ratios[1], ellipticity, triaxiality
@@ -561,7 +624,6 @@ def iter_RIT_3d(star_input, max_iterations=30, tolerance=1e-4, initial_max_radiu
     total_mass = np.sum(star['Masses'])
     coords = np.array(star['Coordinates'])
     masses = np.array(star['Masses'])
-
     initial_particles = len(coords)
     
     if initial_particles < 1000:
@@ -576,7 +638,6 @@ def iter_RIT_3d(star_input, max_iterations=30, tolerance=1e-4, initial_max_radiu
     initial_mask = distances <= initial_max_radius
     coords = coords[initial_mask]
     masses = masses[initial_mask]
-    
     # Apply particle fraction to randomly delete particles
     particle_mask = np.random.rand(len(coords)) < particle_fraction
     coords = coords[particle_mask]
@@ -585,13 +646,13 @@ def iter_RIT_3d(star_input, max_iterations=30, tolerance=1e-4, initial_max_radiu
     # Update the star with the filtered coordinates and masses
     star['Coordinates'] = coords
     star['Masses'] = masses
-    
     # Center the galaxy
     star, cm = center_mass(star)
     
     # Mask out particles with position 0 0 0
     coords = np.array(star['Coordinates'])
     masses = np.array(star['Masses'])
+    
     mask = np.any(coords != 0, axis=1)
     coords = coords[mask]
     masses = masses[mask]
@@ -616,13 +677,16 @@ def iter_RIT_3d(star_input, max_iterations=30, tolerance=1e-4, initial_max_radiu
     # rotation_matrix = np.linalg.inv(inv_matrix)
     final_matrix = inv_matrix
     # Rotate and align the galaxy into the ellipsoid
-    coords_rotated = [list(inv_matrix.dot(coord)) for coord in coords]
+    coords_rotated = np.dot(star['Coordinates'], inv_matrix)
+    ## coords_rotated = coords.dot(inv_matrix.T) 
+    ## coords_rotated = [list(inv_matrix.dot(coord)) for coord in coords]
     star['Coordinates'] = coords_rotated
     star['Masses'] = masses
-    # star = {'Coordinates': coords_rotated, 'Masses': masses}
+
     
     prev_a, prev_b, prev_c = a, b, c
-    r = np.array([ellipsoidal_radius_3d(coord, a, b, c) for coord in coords])
+    ## r = np.array([ellipsoidal_radius_3d(coord, a, b, c) for coord in coords])
+    r = ellipsoidal_radius_3d_vectorized(coords_rotated, a, b, c)
     max_radius = np.max(r)
     star_rotated = star
     # Calculate the initial volume
@@ -646,7 +710,6 @@ def iter_RIT_3d(star_input, max_iterations=30, tolerance=1e-4, initial_max_radiu
         # Recalculate the reduced tensor on rotated system
         star_rotated['Coordinates'] = coords_rotated
         star_rotated['Masses'] = masses
-        # star_rotated = {'Coordinates': coords_rotated, 'Masses': masses}
         I, A, B, C, _, _, _, _ = reduced_tensor_3d(star_rotated, a, b, c)
         a_new = A
         b_new = B
@@ -667,11 +730,14 @@ def iter_RIT_3d(star_input, max_iterations=30, tolerance=1e-4, initial_max_radiu
         prev_a, prev_b, prev_c = a, b, c
 
         # Exclude particles outside the ellipsoid
-        ellipsoidal_radii_new = np.array([ellipsoidal_radius_3d(coord, a, b, c) for coord in coords_rotated])
+        ## ellipsoidal_radii_new = np.array([ellipsoidal_radius_3d(coord, a, b, c) for coord in coords_rotated])
+        ellipsoidal_radii_new = ellipsoidal_radius_3d_vectorized(coords_rotated, a, b, c)
+
         mask = ellipsoidal_radii_new <= max_radius
         
         # Update ellipsoid and galaxy
-        coords_rotated = [coord for coord, m in zip(coords_rotated, mask) if m]
+        ## coords_rotated = [coord for coord, m in zip(coords_rotated, mask) if m]
+        coords_rotated = coords_rotated[mask]
         masses = masses[mask]
         star = {'Coordinates': coords_rotated, 'Masses': masses}
         
