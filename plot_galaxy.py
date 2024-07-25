@@ -5,13 +5,15 @@ import matplotlib
 import matplotlib.cm as cm
 from astropy.cosmology import Planck13
 
-
 import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
 import os
-from IPython.display import set_matplotlib_formats
 
+import matplotlib.cm as cm
+from scipy.integrate import quad
+
+from IPython.display import set_matplotlib_formats
 from mpl_toolkits.mplot3d import Axes3D
 
 # set_matplotlib_formats('svg')
@@ -24,17 +26,6 @@ from mpl_toolkits.mplot3d import Axes3D
 # 3d scatter
 # 3d scatter with ellipsoid - must enter the three axes of the ellipsoid
 
-import matplotlib.pyplot as plt
-import matplotlib.cm as cm
-import numpy as np
-import pandas as pd
-import os
-from astropy.cosmology import Planck13
-import pandas as pd
-import numpy as np
-import matplotlib.pyplot as plt
-import matplotlib.cm as cm
-import os
 
 def baca_age1(ax, csv_files, title=None, colorbar = True, ba = True, ca = True):
     """
@@ -68,7 +59,6 @@ def baca_age1(ax, csv_files, title=None, colorbar = True, ba = True, ca = True):
     
     # Sort by the Age Range Avg
     df_all = df_all.sort_values(by='Age Range Avg').reset_index(drop=True)
-    
     # Categorize datasets based on filename patterns
     df_firebox = df_all[df_all['source'].str.contains('FIREBox', na=False)]
     df_firem10 = df_all[df_all['source'].str.contains('FIREm', na=False)]
@@ -153,21 +143,6 @@ def baca_age1(ax, csv_files, title=None, colorbar = True, ba = True, ca = True):
     ax.spines['right'].set_color('black')
     ax.spines['bottom'].set_color('black')
     ax.spines['left'].set_color('black')
-
-# Example of usage
-def baca_combine(csv_files1, csv_files2, csv_files3, title1 = None, title2 = None, title3 = None):
-    fig, axs = plt.subplots(1, 3, figsize=(18, 6))  # 1 row and 3 columns of subplots
-    
-    # Plot each graph
-    baca_lookback1(axs[0], csv_files1, title=title1, colorbar = False, ba = False, ca = True)
-    baca_lookback1(axs[1], csv_files2, title=title2, colorbar = False, ba = True, ca = True)
-    baca_age1(axs[2], csv_files3, title=title3, colorbar = True, ba = False, ca = False)
-    
-    plt.tight_layout()  
-    plt.show()
-
-
-
 
 def baca_lookback1(ax, csv_files, title=None, colorbar = True, ba = True, ca = True):
     def lookback_time(z):
@@ -280,7 +255,28 @@ def baca_lookback1(ax, csv_files, title=None, colorbar = True, ba = True, ca = T
     ax.spines['left'].set_color('black')
 
 
+# Example of usage
+import matplotlib.pyplot as plt
+import matplotlib.gridspec as gridspec
 
+def baca_combine(csv_files1, csv_files2, csv_files3, title1=None, title2=None, title3=None):
+    # Create a gridspec with different width ratios
+    gs = gridspec.GridSpec(1, 3, width_ratios=[1.2, 1.2, 1.2])  # Adjust the width ratio of the third subplot
+
+    fig = plt.figure(figsize=(22, 6))
+
+    # Create subplots with the specified gridspec
+    ax1 = fig.add_subplot(gs[0])
+    ax2 = fig.add_subplot(gs[1])
+    ax3 = fig.add_subplot(gs[2])
+
+    # Plot each graph
+    baca_lookback1(ax1, csv_files1, title=title1, colorbar=True, ba=True, ca=True)
+    baca_lookback1(ax2, csv_files2, title=title2, colorbar=True, ba=True, ca=True)
+    baca_age1(ax3, csv_files3, title=title3, colorbar=True, ba=True, ca=True)
+
+    plt.tight_layout()
+    plt.show()
 
 
 def baloga_3d(csv_files):
@@ -344,10 +340,6 @@ def baloga_2d(csv_files):
 
     plt.show()
 
-import os
-import pandas as pd
-import numpy as np
-import matplotlib.pyplot as plt
 
 def baca2(csv_files):
     # Read CSV files and add a 'source' column based on the filename
@@ -567,15 +559,6 @@ def baca_age(csv_files, title=None):
 
     plt.show()
 
-import pandas as pd
-import numpy as np
-import os
-import numpy as np
-import pandas as pd
-import os
-import matplotlib.pyplot as plt
-import matplotlib.cm as cm
-from scipy.integrate import quad
 
 def baca_lookback(csv_files, title=None):
     """

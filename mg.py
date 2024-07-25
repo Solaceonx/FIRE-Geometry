@@ -653,9 +653,7 @@ def iter_RIT_3d(star_input, max_iterations=30, tolerance=1e-4, initial_max_radiu
 
     cumulative_time = 0
     star = star_input
-    min_age = np.min(star['StellarAge'])
-    max_age = np.max(star['StellarAge'])
-    age_range = [min_age, max_age]
+    
     total_mass = np.sum(star['Masses'])
     coords = np.array(star['Coordinates'])
     masses = np.array(star['Masses'])
@@ -667,7 +665,9 @@ def iter_RIT_3d(star_input, max_iterations=30, tolerance=1e-4, initial_max_radiu
     
     if initial_particles > 5000000:
         print(f'Big galaxy: has {initial_particles} star particles, will take a long time')
-    
+    min_age = np.min(star['StellarAge'])
+    max_age = np.max(star['StellarAge'])
+    age_range = [min_age, max_age]
     # Mask out particles outside of initial max radius
     distances = np.linalg.norm(coords, axis=1)
     initial_mask = distances <= initial_max_radius
@@ -1352,16 +1352,36 @@ def measure_m12(sim_inputs, snap_num, host=1, age_range = 15):
 
         # code to mask young stars, need to increase age range
         mask = star_snapdict['StellarAge'] <= age_range
-        for key, value in star_snapdict.items():
-            if isinstance(value, list):
-                value = np.array(value)  # Convert lists to NumPy arrays
-            if isinstance(value, np.ndarray) and len(value) == len(mask):
-                star_snapdict[key] = value[mask]
-            else:
-                star_snapdict[key] = value
+        if len(star_snapdict['StellarAge'][mask]) < 1000:
+            sorted_indices = np.argsort(star_snapdict['StellarAge'])
+            youngest_indices = sorted_indices[:1000]
+            for key, value in star_snapdict.items():
+                if isinstance(value, list):
+                    value = np.array(value)  # Convert lists to NumPy arrays
+                if isinstance(value, np.ndarray) and len(value) > 1000:
+                    star_snapdict[key] = value[youngest_indices] 
+                else:
+                    star_snapdict[key] = value
+
+        else: 
+            for key, value in star_snapdict.items():
+                if isinstance(value, list):
+                    value = np.array(value)  # Convert lists to NumPy arrays
+                if isinstance(value, np.ndarray) and len(value) == len(mask):
+                    star_snapdict[key] = value[mask]
+                else:
+                    star_snapdict[key] = value
+
+        
+        # new code check this to make sure it's right 
+        '''
         if len(star_snapdict['StellarAge']) < 100:
-            print('asdfasdfasdfasdf')
-            
+            sorted_indices = np.argsort(star_snapdict['StellarAge'])
+            youngest_indices = sorted_indices[:1000]
+            for key, value in star_snapdict.items():
+                if isinstance(value, np.ndarray) and len(value) > 1000:
+                    star_snapdict[key] = value[youngest_indices]  
+            '''
         star_center, gas_center, halo2 = galaxy_tools.mask_sim_to_halo(
                         star_snapdict, gas_snapdict, halo, orient=False, lim=True, limvalue=halo['rvir'].values[0] * 0.1)
         
