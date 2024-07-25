@@ -96,7 +96,7 @@ def baca_age1(ax, csv_files, title=None, colorbar = True, ba = True, ca = True):
         cbar = plt.colorbar(scatter1, ax=ax)
         cbar.set_label('Stellar Age (Gyr)', **csfont1)
     
-    ax.legend(loc='best')
+    # ax.legend(loc='best')
     if ba == True:
         ax.set_xlabel('b/a', color='black', **csfont1)
     if ca == True:
@@ -200,7 +200,7 @@ def baca_lookback1(ax, csv_files, title=None, colorbar = True, ba = True, ca = T
         cbar = plt.colorbar(scatter1, ax=ax)
         cbar.set_label('Lookback Time (Gyr)', fontsize=13)
     
-    ax.legend(loc='best')
+    # ax.legend(loc='best')
     if ba == True: 
         ax.set_xlabel('b/a', fontsize=13)
     if ca == True:
