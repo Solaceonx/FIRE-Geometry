@@ -23,6 +23,7 @@ import matplotlib.pyplot as plt
 import copy
 import os
 import time
+from astropy.cosmology import Planck13
 
 def ellipsoidal_radius_2d(coord, a, b):
     """
@@ -386,9 +387,9 @@ def csv_3d(folder_path, file_name, data):
     # Write data to CSV file
     with open(full_file_path, mode='w', newline='') as file:
         writer = csv.writer(file)
-        writer.writerow(['Simulation', 'a', 'b', 'c', 'b/a', 'c/a', 'c/b', 'ellipticity', 'triaxiality', 'Iterations', 'Initial Particles', 'Remaining Particles', 'Max Radius', 'r_50', 'mass', 'Center of Mass', 'Rotation Matrix'])
+        writer.writerow(['Simulation', 'a', 'b', 'c', 'b/a', 'c/a', 'c/b', 'ellipticity', 'triaxiality', 'Iterations', 'Initial Particles', 'Remaining Particles', 'Max Radius', 'r_50', 'mass', 'Age Range', 'Snapshot', 'Redshift', 'Center of Mass', 'Rotation Matrix'])
         for entry in data:
-            writer.writerow([entry['simulation'], entry['a'], entry['b'], entry['c'], entry['b/a'], entry['c/a'], entry['c/b'], entry['ellipticity'], entry['triaxiality'], entry['iterations'], entry['initial_particles'], entry['remaining_particles'], entry['max_radius'], entry['r_50'], entry['mass'], entry['cm'], entry['rotation_matrix']])
+            writer.writerow([entry['simulation'], entry['a'], entry['b'], entry['c'], entry['b/a'], entry['c/a'], entry['c/b'], entry['ellipticity'], entry['triaxiality'], entry['iterations'], entry['initial_particles'], entry['remaining_particles'], entry['max_radius'], entry['r_50'], entry['mass'], entry['age_range'], entry['snap_num'], entry['redshift'], entry['cm'], entry['rotation_matrix']])
 
 # def rotation_angle(n):
 
@@ -577,8 +578,40 @@ def iter_RIT_2d(star_input, a=None, b=None, c=None, max_iterations=20, tolerance
             'mass': mass,
         }
     return results
-        
-def iter_RIT_3d(star_input, max_iterations=30, tolerance=1e-4, initial_max_radius=400.0, particle_fraction=1.0):
+
+def partition_age(star_center_copy, age_partitions):
+    """
+    Partition star_center_copy into groups based on StellarAge and create new star_centers.
+
+    Parameters
+    ----------
+    star_center_copy : dict
+        Dictionary containing the star data, including 'StellarAge'.
+    age_partitions : list of int
+        List of age partitions to divide the stars.
+
+    Returns
+    -------
+    partitioned_star : list of dict
+        List of star_center dictionaries for each age partition.
+    """
+    age_partitions = [0] + age_partitions + [float('inf')]  # Ensure partitions cover all ages
+    partitioned_star = []
+
+    for i in range(len(age_partitions) - 1):
+        lower_bound = age_partitions[i]
+        upper_bound = age_partitions[i + 1]
+
+        # Filter stars based on the age partition
+        mask = (star_center_copy['StellarAge'] >= lower_bound) & (star_center_copy['StellarAge'] < upper_bound)
+        new_star_center = {key: value[mask] for key, value in star_center_copy.items()}
+
+        partitioned_star.append(new_star_center)
+
+    return partitioned_star
+
+
+def iter_RIT_3d(star_input, max_iterations=30, tolerance=1e-4, initial_max_radius=400.0, particle_fraction=1.0, particle_bound = 1000):
     """
     Perform an iterative calculation of the Reduced Inertia Tensor (RIT) for a galaxy, 
     holding the volume constant.
@@ -620,13 +653,15 @@ def iter_RIT_3d(star_input, max_iterations=30, tolerance=1e-4, initial_max_radiu
 
     cumulative_time = 0
     star = star_input
-
+    min_age = np.min(star['StellarAge'])
+    max_age = np.max(star['StellarAge'])
+    age_range = [min_age, max_age]
     total_mass = np.sum(star['Masses'])
     coords = np.array(star['Coordinates'])
     masses = np.array(star['Masses'])
     initial_particles = len(coords)
     
-    if initial_particles < 1000:
+    if initial_particles < particle_bound:
         print(f'Galaxy too small: only has {initial_particles} star particles')
         return None
     
@@ -798,6 +833,7 @@ def iter_RIT_3d(star_input, max_iterations=30, tolerance=1e-4, initial_max_radiu
         'mass': mass,
         'remaining_galaxy': star,
         'cm': cm,
+        'age_range': age_range,
         'rotation_matrix' : final_matrix
     }
 
@@ -921,7 +957,7 @@ def find_galaxy_shape2d(sim_inputs, output_file, snap_num_input=1200, rvir_scale
                             repeats += 1
         
         else:
-            sim_path = '/DFS-L/DATA/cosmo/jgmoren1/FIREBox/FB15N1024/objects_1200/' + str(sim) + '.hdf5'
+            sim_path = '/DFS-L/DATA/cosmo/jgmoren1/FIREBox/FB15N1024/old_objects_1200/' + str(sim) + '.hdf5'
             star_snapdict, gas_snapdict = galaxy_tools.load_sim_FIREBox(sim_path)
             while repeats <= k:
                 star_snapdict_copy = copy.deepcopy(star_snapdict)
@@ -982,9 +1018,46 @@ def find_galaxy_shape2d(sim_inputs, output_file, snap_num_input=1200, rvir_scale
     csv_2d('2D shapes', output_file, results) 
     return results
 
-         
+def partition_age(star_center_copy, age_partitions):
+    """
+    Partition star_center_copy into groups based on StellarAge and create new star_centers.
 
-def find_galaxy_shape3d(sim_inputs, output_file, snap_num_input=1200, rvir_scales=[0.1], particle_fractions=[1.0], repeats=1, FIREBox=0):
+    Parameters
+    ----------
+    star_center_copy : dict
+        Dictionary containing the star data, including 'StellarAge'.
+    age_partitions : list of int
+        List of age partitions to divide the stars.
+
+    Returns
+    -------
+    partitioned_star : list of dict
+        List of star_center dictionaries for each age partition.
+    """
+    age_partitions = [0] + age_partitions + [float('inf')]  # Ensure partitions cover all ages
+    partitioned_star = []
+
+    for i in range(len(age_partitions) - 1):
+        lower_bound = age_partitions[i]
+        upper_bound = age_partitions[i + 1]
+
+        # Filter stars based on the age partition
+        mask = (star_center_copy['StellarAge'] >= lower_bound) & (star_center_copy['StellarAge'] < upper_bound)
+
+        new_star_center = {}
+        for key, value in star_center_copy.items():
+            if isinstance(value, (list, np.ndarray)):
+                new_star_center[key] = np.array(value)[mask]
+            else:
+                new_star_center[key] = value  # Keep scalar values as is
+
+        partitioned_star.append(new_star_center)
+
+    return partitioned_star
+
+    
+
+def find_galaxy_shape3d(sim_inputs, output_file, snap_num_input=1200, host_num = 1, rvir_scales=[0.1], particle_fractions=[1.0], repeats=1, FIREBox=0, min_particles = 1000, age_partitions = None):
     """
     Analyze the shape of galaxies from simulation data and save the results to a CSV file.
 
@@ -1016,6 +1089,7 @@ def find_galaxy_shape3d(sim_inputs, output_file, snap_num_input=1200, rvir_scale
     """
     results = []
     k = repeats
+    redshift = z(snap_num_input, '/DFS-L/DATA/cosmo/grenache/omyrtaj/fofie/snapshot_times.txt')
     for sim in sim_inputs:
         repeats = 1
         start_time = time.time()
@@ -1025,10 +1099,10 @@ def find_galaxy_shape3d(sim_inputs, output_file, snap_num_input=1200, rvir_scale
             sim_path = '/DFS-L/DATA/cosmo/grenache/aalazar/FIRE/GVB/' + str(sim) + '/output/hdf5/snapdir_' + str(snap_num) + '/'           
             if snap_num == 600:
                 halo_path = '/DFS-L/DATA/cosmo/grenache/aalazar/FIRE/GVB/' + str(sim) + '/halo/rockstar_dm/hdf5/'
-                halo = galaxy_tools.load_halo(halo_path, snap_num, host=True, filetype='hdf5', hostnumber=1)
+                halo = galaxy_tools.load_halo(halo_path, snap_num, host=True, filetype='hdf5', hostnumber=host_num)
             elif snap_num == 184:
                 halo_path = '/DFS-L/DATA/cosmo/grenache/aalazar/FIRE/GVB/' + str(sim) + '/halo/rockstar_dm/catalog/'
-                halo = galaxy_tools.load_halo(halo_path, snap_num, host=True, filetype='ascii', hostnumber=1)
+                halo = galaxy_tools.load_halo(halo_path, snap_num, host=True, filetype='ascii', hostnumber=host_num)
             else:
                 print("Invalid snap_num")
                 continue
@@ -1046,32 +1120,38 @@ def find_galaxy_shape3d(sim_inputs, output_file, snap_num_input=1200, rvir_scale
                 for j in particle_fractions:
                     while repeats <= k:
                         star_center_copy = copy.deepcopy(star_center)
-                        result = iter_RIT_3d(star_center_copy, particle_fraction=j)
-                        if result:
-                            results.append({
-                                'simulation': sim,
-                                'a': result['a'],
-                                'b': result['b'],
-                                'c': result['c'],
-                                'b/a': result['b/a'],
-                                'c/a': result['c/a'],
-                                'c/b': result['c/b'],
-                                'ellipticity': result['ellipticity'],
-                                'triaxiality': result['triaxiality'],
-                                'iterations': result['iterations'],
-                                'initial_particles': result['initial_particles'],
-                                'remaining_particles': result['remaining_particles'],
-                                'max_radius': result['max_radius'],
-                                'r_50': result['r_50'],
-                                'mass': result['mass'],
-                                'cm': result['cm'],
-                                'rotation_matrix' : result['rotation_matrix'],
-                                'remaining_galaxy': result['remaining_galaxy']
-                            })
-                            repeats += 1
+                        # print(f"The smallest value in 'StellarAge' is {min(star_center_copy['StellarAge'])} and the largest value is {max(star_center_copy['StellarAge'])}")
+                        partitioned_star = partition_age(star_center_copy, age_partitions)
+                        for partition in partitioned_star:
+                            result = iter_RIT_3d(partition, particle_fraction=j, particle_bound = min_particles)
+                            if result:
+                                results.append({
+                                    'simulation': sim,
+                                    'a': result['a'],
+                                    'b': result['b'],
+                                    'c': result['c'],
+                                    'b/a': result['b/a'],
+                                    'c/a': result['c/a'],
+                                    'c/b': result['c/b'],
+                                    'ellipticity': result['ellipticity'],
+                                    'triaxiality': result['triaxiality'],
+                                    'iterations': result['iterations'],
+                                    'initial_particles': result['initial_particles'],
+                                    'remaining_particles': result['remaining_particles'],
+                                    'max_radius': result['max_radius'],
+                                    'r_50': result['r_50'],
+                                    'mass': result['mass'],
+                                    'cm': result['cm'],
+                                    'age_range': result['age_range'],
+                                    'snap_num': snap_num, 
+                                    'redshift': redshift,
+                                    'rotation_matrix': result['rotation_matrix'],
+                                    'remaining_galaxy': result['remaining_galaxy']
+                                })
+                        repeats += 1
         
         else:
-            sim_path = '/DFS-L/DATA/cosmo/jgmoren1/FIREBox/FB15N1024/objects_1200/' + str(sim) + '.hdf5'
+            sim_path = '/DFS-L/DATA/cosmo/jgmoren1/FIREBox/FB15N1024/old_objects_1200/' + str(sim) + '.hdf5'
             star_snapdict, gas_snapdict = galaxy_tools.load_sim_FIREBox(sim_path)  
             result = iter_RIT_3d(star_snapdict, particle_fraction=[1.0])
             if result:
@@ -1092,6 +1172,9 @@ def find_galaxy_shape3d(sim_inputs, output_file, snap_num_input=1200, rvir_scale
                     'r_50': result['r_50'],
                     'mass': result['mass'],
                     'cm': result['cm'],
+                    'age_range': result['age_range'],
+                    'snap_num': snap_num, 
+                    'redshift': redshift,
                     'rotation_matrix' : result['rotation_matrix'],
                     'remaining_galaxy': result['remaining_galaxy']
                 })
@@ -1137,6 +1220,10 @@ def outlier_shape3d(sim_inputs, output_file, cutoff_radius = 100, cm = [0, 0, 0]
     """
     results = []
     k = repeats
+    if snap_num_input < 601:
+        redshift = z(snap_num_input, '/DFS-L/DATA/cosmo/grenache/omyrtaj/fofie/snapshot_times.txt')
+    else:
+        redshift = 0.0
     for sim in sim_inputs:
         repeats = 1
         start_time = time.time()
@@ -1186,13 +1273,16 @@ def outlier_shape3d(sim_inputs, output_file, cutoff_radius = 100, cm = [0, 0, 0]
                                 'r_50': result['r_50'],
                                 'mass': result['mass'],
                                 'cm': result['cm'],
+                                'age_range': result['age_range'],
+                                'snap_num': snap_num, 
+                                'redshift': redshift,
                                 'rotation_matrix' : result['rotation_matrix'],
                                 'remaining_galaxy': result['remaining_galaxy']
                             })
                             repeats += 1
         
         else:
-            sim_path = '/DFS-L/DATA/cosmo/jgmoren1/FIREBox/FB15N1024/objects_1200/' + str(sim) + '.hdf5'
+            sim_path = '/DFS-L/DATA/cosmo/jgmoren1/FIREBox/FB15N1024/old_objects_1200/' + str(sim) + '.hdf5'
             star_snapdict, gas_snapdict = galaxy_tools.load_sim_FIREBox(sim_path)  
             coords = np.array(star_snapdict['Coordinates'])
             new_coords = coords - cm
@@ -1218,6 +1308,9 @@ def outlier_shape3d(sim_inputs, output_file, cutoff_radius = 100, cm = [0, 0, 0]
                     'r_50': result['r_50'],
                     'mass': result['mass'],
                     'cm': result['cm']+cm,
+                    'age_range': result['age_range'],
+                    'snap_num': snap_num, 
+                    'redshift': redshift,
                     'rotation_matrix' : result['rotation_matrix'],
                     'remaining_galaxy': result['remaining_galaxy']
                 })
@@ -1228,4 +1321,117 @@ def outlier_shape3d(sim_inputs, output_file, cutoff_radius = 100, cm = [0, 0, 0]
         
     # save_to_csv(output_file, results)
     csv_3d('outlier shapes', output_file, results) 
-    return results                    
+    return results        
+
+import time
+
+def measure_m12(sim_inputs, snap_num, host=1, age_range = 15):
+    redshift = z(snap_num, '/DFS-L/DATA/cosmo/grenache/omyrtaj/fofie/snapshot_times.txt')
+    for sim in sim_inputs:
+        individual_result = []
+        if host == 1: 
+            individual_output_file = 'FIRE_' + str(sim) + '_' + str(age_range) + '_' + str(snap_num) + '.csv'
+        else: 
+            individual_output_file = 'FIRE_' + str(sim) + '_' + str(age_range) + '_' + str(snap_num) + '_2.csv'
+        
+        print(f"loading galaxy '{sim}'")
+        start_time = time.time()
+        
+        halo_path = '/DFS-L/DATA/cosmo/grenache/omyrtaj/FIRE/' + str(sim) + '/halo/rockstar_dm/catalog_hdf5/'
+        sim_path = '/DFS-L/DATA/cosmo/grenache/omyrtaj/FIRE/' + str(sim) + '/output/snapdir_' + str(snap_num) + '/'
+        
+        load_start_time = time.time()
+        halo = galaxy_tools.load_halo(halo_path, snap_num, host=True, filetype='hdf5', hostnumber=host)
+        star_snapdict, gas_snapdict = galaxy_tools.load_sim(sim_path, snap_num)
+        load_end_time = time.time()
+
+        # correct stellar age calculation
+        star_snapdict['StellarAge'] = np.array(star_snapdict['StellarAge'])
+        curr_time = Planck13.lookback_time(redshift).value
+        star_snapdict['StellarAge'] -= curr_time
+
+        # code to mask young stars, need to increase age range
+        mask = star_snapdict['StellarAge'] <= age_range
+        for key, value in star_snapdict.items():
+            if isinstance(value, list):
+                value = np.array(value)  # Convert lists to NumPy arrays
+            if isinstance(value, np.ndarray) and len(value) == len(mask):
+                star_snapdict[key] = value[mask]
+            else:
+                star_snapdict[key] = value
+        if len(star_snapdict['StellarAge']) < 100:
+            print('asdfasdfasdfasdf')
+            
+        star_center, gas_center, halo2 = galaxy_tools.mask_sim_to_halo(
+                        star_snapdict, gas_snapdict, halo, orient=False, lim=True, limvalue=halo['rvir'].values[0] * 0.1)
+        
+        mask_end_time = time.time()
+        
+        result = iter_RIT_3d(star_center, initial_max_radius=50000000000000.0)
+        iter_end_time = time.time()
+        
+        if result:
+            individual_result.append({
+                'simulation': sim,
+                'a': result['a'],
+                'b': result['b'],
+                'c': result['c'],
+                'b/a': result['b/a'],
+                'c/a': result['c/a'],
+                'c/b': result['c/b'],
+                'ellipticity': result['ellipticity'],
+                'triaxiality': result['triaxiality'],
+                'iterations': result['iterations'],
+                'initial_particles': result['initial_particles'],
+                'remaining_particles': result['remaining_particles'],
+                'max_radius': result['max_radius'],
+                'r_50': result['r_50'],
+                'mass': result['mass'],
+                'cm': result['cm'],
+                'snap_num': snap_num, 
+                'redshift': redshift,
+                'age_range': result['age_range'],
+                'rotation_matrix': result['rotation_matrix'],
+                'remaining_galaxy': result['remaining_galaxy']
+            })
+        
+        print('measured galaxy ' + str(sim))
+        
+        csv_3d('m12 redshift shapes', individual_output_file, individual_result)
+        write_end_time = time.time()
+        
+        print(f"Time taken for loading: {load_end_time - load_start_time:.2f} seconds")
+        print(f"Time taken for masking: {mask_end_time - load_end_time:.2f} seconds")
+        print(f"Total time taken for galaxy '{sim}': {write_end_time - start_time:.2f} seconds")
+
+def z(snapshot, file_path):
+    try:
+        # Normalize the snapshot input by stripping leading zeros
+        snapshot_str = str(snapshot).lstrip('0')
+        
+        with open(file_path, 'r') as file:
+            lines = file.readlines()
+            
+            for line in lines:
+                if line.startswith("#") or not line.strip():
+                    # Skip comments and empty lines
+                    continue
+                
+                parts = line.split()
+                if not parts[0].isdigit():
+                    # Skip lines where the first part is not a digit
+                    continue
+                
+                # Normalize the snapshot number in the file by stripping leading zeros
+                snapshot_num_str = parts[0].lstrip('0')
+                redshift = float(parts[2])
+                
+                if snapshot_num_str == snapshot_str:
+                    return redshift
+
+        raise ValueError(f"Snapshot {snapshot} not found in the file.")
+    
+    except FileNotFoundError:
+        raise FileNotFoundError(f"The file at {file_path} was not found.")
+    except Exception as e:
+        raise Exception(f"An error occurred: {e}")

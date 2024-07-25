@@ -2,6 +2,10 @@ import numpy as np
 import csv
 import matplotlib
 
+import matplotlib.cm as cm
+from astropy.cosmology import Planck13
+
+
 import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
@@ -19,6 +23,264 @@ from mpl_toolkits.mplot3d import Axes3D
 # 2d hexbin
 # 3d scatter
 # 3d scatter with ellipsoid - must enter the three axes of the ellipsoid
+
+import matplotlib.pyplot as plt
+import matplotlib.cm as cm
+import numpy as np
+import pandas as pd
+import os
+from astropy.cosmology import Planck13
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib.cm as cm
+import os
+
+def baca_age1(ax, csv_files, title=None, colorbar = True, ba = True, ca = True):
+    """
+    Plot galaxies' b/a vs. c/a space colored by average stellar age.
+    
+    Parameters:
+    ax (matplotlib.axes.Axes): The axes object to plot on.
+    csv_files (list of str): List of paths to the CSV files.
+    title (str, optional): Title for the plot.
+    
+    Returns:
+    None
+    """
+    # Read CSV files and add a 'source' column based on the filename
+    dfs = []
+    for csv_file in csv_files:
+        df = pd.read_csv(csv_file)
+        df['source'] = os.path.basename(csv_file)
+        dfs.append(df)
+    
+    df_all = pd.concat(dfs, ignore_index=True)
+    num_galaxies = len(df_all)
+    
+    required_columns = ['b/a', 'c/a', 'mass', 'Age Range']
+    missing_columns = [col for col in required_columns if col not in df_all.columns]
+    if missing_columns:
+        raise ValueError(f"Missing columns in the dataframe: {', '.join(missing_columns)}")
+    
+    # Calculate the average of each Age Range
+    df_all['Age Range Avg'] = df_all['Age Range'].apply(lambda x: np.mean(eval(x)))
+    
+    # Sort by the Age Range Avg
+    df_all = df_all.sort_values(by='Age Range Avg').reset_index(drop=True)
+    
+    # Categorize datasets based on filename patterns
+    df_firebox = df_all[df_all['source'].str.contains('FIREBox', na=False)]
+    df_firem10 = df_all[df_all['source'].str.contains('FIREm', na=False)]
+    df_fire_m12 = df_all[df_all['source'].str.contains('FIRE_m12', na=False)]
+    
+    ba_firebox = df_firebox['b/a']
+    ca_firebox = df_firebox['c/a']
+    mass_firebox = df_firebox['mass']
+    
+    ba_firem10 = df_firem10['b/a']
+    ca_firem10 = df_firem10['c/a']
+    mass_firem10 = df_firem10['mass']
+    
+    ba_fire_m12 = df_fire_m12['b/a']
+    ca_fire_m12 = df_fire_m12['c/a']
+    mass_fire_m12 = df_fire_m12['mass']
+    
+    csfont = {'size': '15'}
+    csfont1 = {'size': '13'}
+    csfont2 = {'size': '15'}
+    
+    # Set the background color for the axes
+    ax.set_facecolor('black')
+    
+    # Create a colormap that transitions from blue to red based on Age Range Avg
+    colormap = cm.get_cmap('winter')
+    min_age = df_all['Age Range Avg'].min()
+    max_age = df_all['Age Range Avg'].max()
+    normalize = plt.Normalize(vmin=min_age, vmax=max_age)
+    
+    scatter1 = ax.scatter(ba_firebox, ca_firebox, c=df_firebox['Age Range Avg'], alpha=0.8, s=5, cmap='winter', norm=normalize, marker='.', zorder=6, label='FIREBox')
+    scatter2 = ax.scatter(ba_firem10, ca_firem10, c=df_firem10['Age Range Avg'], alpha=1, s=60, cmap='winter', norm=normalize, marker='^', zorder=6, label='FIRE')
+    scatter3 = ax.scatter(ba_fire_m12, ca_fire_m12, c=df_fire_m12['Age Range Avg'], alpha=1, s=60, cmap='winter', norm=normalize, marker='o', zorder=7, label='FIRE_m12')
+    if colorbar == True:
+        cbar = plt.colorbar(scatter1, ax=ax)
+        cbar.set_label('Stellar Age (Gyr)', **csfont1)
+    
+    ax.legend(loc='best')
+    if ba == True:
+        ax.set_xlabel('b/a', color='black', **csfont1)
+    if ca == True:
+        ax.set_ylabel('c/a', color='black', **csfont1)
+    
+    # Set the title directly if provided, otherwise determine based on input files
+    if title is None:
+        title = "Galaxies in b/a vs. c/a space from "
+        if any("FIREBox_satellite" in os.path.basename(f) for f in csv_files):
+            title += "FIREBox"
+        elif any("FIREm10" in os.path.basename(f) for f in csv_files):
+            title += "FIRE"
+        elif any("FIRE_m12" in os.path.basename(f) for f in csv_files):
+            title += "FIRE_m12"
+        title += f" (N={num_galaxies})"
+    
+    ax.set_title(title, color='black', **csfont)
+    ax.set_xlim([0, 1])
+    ax.set_ylim([0, 1])
+    
+    x = np.arange(0.0, 1.01, 0.01)
+    ax.plot(x, x, color='white', linestyle='-', zorder=5)
+    x_filtered = x[x >= 0.5]
+    y_filtered = 1 - x_filtered
+    ax.plot(x_filtered, y_filtered, color='white', linestyle='-', zorder=5)
+    ax.plot([1, 1], [0, 1], color='white', linestyle='-', zorder=5)
+    
+    ax.fill_between(x, x, 1 - x, where=(x >= 0.5), color='black', zorder=1)
+    ax.fill_between(x, x, where=(x <= 0.5), color='black', zorder=1)
+    ax.fill_between(x, 1 - x, where=(x >= 0.5), color='black', zorder=1)
+    
+    center = (1, 0)
+    radius = 0.4
+    theta = np.linspace(0, 2 * np.pi, 100)
+    ax.plot(center[0] + radius * np.cos(theta), center[1] + radius * np.sin(theta), color='white', linestyle='-', zorder=5)
+    ax.fill_between(center[0] + radius * np.cos(theta), center[1] + radius * np.sin(theta), color='black', zorder=1)
+    
+    ax.text(0.7, 0.11, 'Disky', **csfont2, alpha=0.8, zorder=7, color='white')
+    ax.text(0.3, 0.11, 'Elongated', **csfont2, alpha=0.8, zorder=7, color='white')
+    ax.text(0.76, 0.72, 'Spheroidal', **csfont2, alpha=0.8, zorder=7, color='white')
+    
+    ax.tick_params(colors='black', which='both')
+    ax.spines['top'].set_color('black')
+    ax.spines['right'].set_color('black')
+    ax.spines['bottom'].set_color('black')
+    ax.spines['left'].set_color('black')
+
+# Example of usage
+def baca_combine(csv_files1, csv_files2, csv_files3, title1 = None, title2 = None, title3 = None):
+    fig, axs = plt.subplots(1, 3, figsize=(18, 6))  # 1 row and 3 columns of subplots
+    
+    # Plot each graph
+    baca_lookback1(axs[0], csv_files1, title=title1, colorbar = False, ba = False, ca = True)
+    baca_lookback1(axs[1], csv_files2, title=title2, colorbar = False, ba = True, ca = True)
+    baca_age1(axs[2], csv_files3, title=title3, colorbar = True, ba = False, ca = False)
+    
+    plt.tight_layout()  
+    plt.show()
+
+
+
+
+def baca_lookback1(ax, csv_files, title=None, colorbar = True, ba = True, ca = True):
+    def lookback_time(z):
+        return Planck13.lookback_time(z).value
+
+    # Read CSV files and add a 'source' column based on the filename
+    dfs = []
+    for csv_file in csv_files:
+        df = pd.read_csv(csv_file)
+        df['source'] = os.path.basename(csv_file)
+        dfs.append(df)
+    
+    df_all = pd.concat(dfs, ignore_index=True)
+    num_galaxies = len(df_all)
+    
+    required_columns = ['b/a', 'c/a', 'mass', 'Redshift']
+    missing_columns = [col for col in required_columns if col not in df_all.columns]
+    if missing_columns:
+        raise ValueError(f"Missing columns in the dataframe: {', '.join(missing_columns)}")
+    
+    # Calculate lookback time for each galaxy
+    df_all['Lookback_Time'] = df_all['Redshift'].apply(lookback_time)
+    df_all = df_all.sort_values(by='Lookback_Time').reset_index(drop=True)
+    
+    df_firebox = df_all[df_all['source'].str.contains('FIREBox', na=False)]
+    df_firem10 = df_all[df_all['source'].str.contains('FIREm', na=False)]
+    df_fire_m12 = df_all[df_all['source'].str.contains('FIRE_m12', na=False)]
+    
+    ba_firebox = df_firebox['b/a']
+    ca_firebox = df_firebox['c/a']
+    mass_firebox = df_firebox['mass']
+    log_mass_firebox = np.log10(mass_firebox)
+    
+    ba_firem10 = df_firem10['b/a']
+    ca_firem10 = df_firem10['c/a']
+    mass_firem10 = df_firem10['mass']
+    log_mass_firem10 = np.log10(mass_firem10)
+    
+    ba_fire_m12 = df_fire_m12['b/a']
+    ca_fire_m12 = df_fire_m12['c/a']
+    mass_fire_m12 = df_fire_m12['mass']
+    log_mass_fire_m12 = np.log10(mass_fire_m12)
+    
+    # Create a colormap that transitions from blue to red based on lookback time
+    colormap = cm.get_cmap('winter')
+    min_lookback_time = df_all['Lookback_Time'].min()
+    max_lookback_time = df_all['Lookback_Time'].max()
+    normalize = plt.Normalize(vmin=min_lookback_time, vmax=max_lookback_time)
+    
+    ax.set_facecolor('black')
+    scatter1 = ax.scatter(ba_firebox, ca_firebox, c=df_firebox['Lookback_Time'], alpha=0.8, s=5, cmap='winter', norm=normalize, marker='.', zorder=6, label='FIREBox')
+    scatter2 = ax.scatter(ba_firem10, ca_firem10, c=df_firem10['Lookback_Time'], alpha=1, s=60, cmap='winter', norm=normalize, marker='^', zorder=6, label='FIRE')
+    scatter3 = ax.scatter(ba_fire_m12, ca_fire_m12, c=df_fire_m12['Lookback_Time'], alpha=1, s=60, cmap='winter', norm=normalize, marker='o', zorder=7, label='FIRE_m12')
+    if colorbar == True:
+        cbar = plt.colorbar(scatter1, ax=ax)
+        cbar.set_label('Lookback Time (Gyr)', fontsize=13)
+    
+    ax.legend(loc='best')
+    if ba == True: 
+        ax.set_xlabel('b/a', fontsize=13)
+    if ca == True:
+        ax.set_ylabel('c/a', fontsize=13)
+    
+    if title is None:
+        title = "Galaxies in b/a vs. c/a space from "
+        if any("FIREBox_satellite" in os.path.basename(f) for f in csv_files):
+            title += "FIREBox"
+        elif any("FIREm10" in os.path.basename(f) for f in csv_files):
+            title += "FIRE"
+        elif any("FIRE_m12" in os.path.basename(f) for f in csv_files):
+            title += "FIRE_m12"
+        title += f" (N={num_galaxies})"
+    
+    ax.set_title(title, fontsize=15)
+    ax.set_xlim([0, 1])
+    ax.set_ylim([0, 1])
+    
+    # Draw arrows connecting points ordered by lookback time
+    for i in range(len(df_all) - 1):
+        ax.arrow(df_all['b/a'][i], df_all['c/a'][i], 
+                 df_all['b/a'][i+1] - df_all['b/a'][i], 
+                 df_all['c/a'][i+1] - df_all['c/a'][i],
+                 color='white', alpha=0.8, head_width=0.02, head_length=0.02, zorder = 6)
+    
+    x = np.arange(0.0, 1.01, 0.01)
+    ax.plot(x, x, color='white', linestyle='-', zorder=5)
+    x_filtered = x[x >= 0.5]
+    y_filtered = 1 - x_filtered
+    ax.plot(x_filtered, y_filtered, color='white', linestyle='-', zorder=5)
+    ax.plot([1, 1], [0, 1], color='white', linestyle='-', zorder=5)
+    
+    ax.fill_between(x, x, 1 - x, where=(x >= 0.5), color='black', zorder=1)
+    ax.fill_between(x, x, where=(x <= 0.5), color='black', zorder=1)
+    ax.fill_between(x, 1 - x, where=(x >= 0.5), color='black', zorder=1)
+    
+    center = (1, 0)
+    radius = 0.4
+    theta = np.linspace(0, 2 * np.pi, 100)
+    ax.plot(center[0] + radius * np.cos(theta), center[1] + radius * np.sin(theta), color='white', linestyle='-', zorder=5)
+    ax.fill_between(center[0] + radius * np.cos(theta), center[1] + radius * np.sin(theta), color='black', zorder=1)
+    
+    ax.text(0.7, 0.11, 'Disky', fontsize=15, alpha=0.8, zorder=7, color='white')
+    ax.text(0.3, 0.11, 'Elongated', fontsize=15, alpha=0.8, zorder=7, color='white')
+    ax.text(0.76, 0.72, 'Spheroidal', fontsize=15, alpha=0.8, zorder=7, color='white')
+    
+    ax.tick_params(colors='black', which='both')
+    ax.spines['top'].set_color('black')
+    ax.spines['right'].set_color('black')
+    ax.spines['bottom'].set_color('black')
+    ax.spines['left'].set_color('black')
+
+
+
 
 
 def baloga_3d(csv_files):
@@ -82,8 +344,12 @@ def baloga_2d(csv_files):
 
     plt.show()
 
+import os
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
 
-def baca(csv_files):
+def baca2(csv_files):
     # Read CSV files and add a 'source' column based on the filename
     dfs = []
     for csv_file in csv_files:
@@ -99,24 +365,25 @@ def baca(csv_files):
     if missing_columns:
         raise ValueError(f"Missing columns in the dataframe: {', '.join(missing_columns)}")
     
+    # Categorize datasets based on filename patterns
     df_firebox = df_all[df_all['source'].str.contains('FIREBox', na=False)]
-    df_fire = df_all[df_all['source'].str.contains('FIRE', na=False) & ~df_all['source'].str.contains('FIREBox', na=False)]
-    df_other = df_all[~df_all['source'].str.contains('FIRE', na=False)]
+    df_firem10 = df_all[df_all['source'].str.contains('FIREm', na=False)]
+    df_fire_m12 = df_all[df_all['source'].str.contains('FIRE_m12', na=False)]
     
     ba_firebox = df_firebox['b/a']
     ca_firebox = df_firebox['c/a']
     mass_firebox = df_firebox['mass']
     log_mass_firebox = np.log10(mass_firebox)
     
-    ba_fire = df_fire['b/a']
-    ca_fire = df_fire['c/a']
-    mass_fire = df_fire['mass']
-    log_mass_fire = np.log10(mass_fire)
+    ba_firem10 = df_firem10['b/a']
+    ca_firem10 = df_firem10['c/a']
+    mass_firem10 = df_firem10['mass']
+    log_mass_firem10 = np.log10(mass_firem10)
     
-    ba_other = df_other['b/a']
-    ca_other = df_other['c/a']
-    mass_other = df_other['mass']
-    log_mass_other = np.log10(mass_other)
+    ba_fire_m12 = df_fire_m12['b/a']
+    ca_fire_m12 = df_fire_m12['c/a']
+    mass_fire_m12 = df_fire_m12['mass']
+    log_mass_fire_m12 = np.log10(mass_fire_m12)
     
     csfont = {'size': '15'}
     csfont1 = {'size': '13'}
@@ -126,11 +393,11 @@ def baca(csv_files):
     ax = plt.gca()
     ax.set_facecolor('black')
     
-    scatter1 = plt.scatter(ba_firebox, ca_firebox, c=log_mass_firebox, alpha=0.8, s=15, cmap='inferno', marker='.', zorder=6, label='FIREBox')
-    scatter2 = plt.scatter(ba_fire, ca_fire, c=log_mass_fire, alpha=1, s=55, cmap='inferno', marker='^', zorder=6, label='FIRE')
-    scatter3 = plt.scatter(ba_other, ca_other, c=log_mass_other, alpha=1, s=100, cmap='inferno', marker='o', zorder=7, label='Other')
+    scatter1 = plt.scatter(ba_firebox, ca_firebox, c=log_mass_firebox, alpha=0.8, s=5, cmap='inferno', marker='.', zorder=6, label='FIREBox')
+    scatter2 = plt.scatter(ba_firem10, ca_firem10, c=log_mass_firem10, alpha=1, s=60, cmap='inferno', marker='^', zorder=6, label='FIRE')
+    scatter3 = plt.scatter(ba_fire_m12, ca_fire_m12, c=log_mass_fire_m12, alpha=1, s=60, cmap='inferno', marker='o', zorder=7, label='FIRE_m12')
     
-    vmin = df_all['mass'].apply(np.log10).min()
+    vmin = df_all['mass'].apply(np.log10).min()-1
     vmax = df_all['mass'].apply(np.log10).max()
     scatter1.set_clim(vmin=vmin, vmax=vmax)
     scatter2.set_clim(vmin=vmin, vmax=vmax)
@@ -146,13 +413,586 @@ def baca(csv_files):
     
     # Determine the appropriate title based on the input files
     title = "Galaxies in b/a vs. c/a space from "
-    if any("FIREBox" in os.path.basename(f) for f in csv_files):
+    if any("FIREBox_satellite" in os.path.basename(f) for f in csv_files):
         title += "FIREBox"
-    elif any("FIRE" in os.path.basename(f) for f in csv_files):
+    elif any(("FIREm10" in os.path.basename(f) for f in csv_files) or ("FIREm10" in os.path.basename(f) for f in csv_files)):
         title += "FIRE"
-    else:
-        title += "FIRE"
+    elif any("FIRE_m12" in os.path.basename(f) for f in csv_files):
+        title += "FIRE_m12"
     title += f" (N={num_galaxies})"
+    
+    plt.title(title, color='black', **csfont)
+    plt.xlim([0, 1])
+    plt.ylim([0, 1])
+    
+    x = np.arange(0.0, 1.01, 0.01)
+    plt.plot(x, x, color='white', linestyle='-', zorder=5)
+    x_filtered = x[x >= 0.5]
+    y_filtered = 1 - x_filtered
+    plt.plot(x_filtered, y_filtered, color='white', linestyle='-', zorder=5)
+    plt.plot([1, 1], [0, 1], color='white', linestyle='-', zorder=5)
+    
+    plt.fill_between(x, x, 1 - x, where=(x >= 0.5), color='black', zorder=1)
+    plt.fill_between(x, x, where=(x <= 0.5), color='black', zorder=1)
+    plt.fill_between(x, 1 - x, where=(x >= 0.5), color='black', zorder=1)
+    
+    center = (1, 0)
+    radius = 0.4
+    theta = np.linspace(0, 2 * np.pi, 100)
+    plt.plot(center[0] + radius * np.cos(theta), center[1] + radius * np.sin(theta), color='white', linestyle='-', zorder=5)
+    plt.fill_between(center[0] + radius * np.cos(theta), center[1] + radius * np.sin(theta), color='black', zorder=1)
+    
+    plt.text(0.7, 0.11, 'Disky', **csfont2, alpha=0.8, zorder=7, color='white')
+    plt.text(0.3, 0.11, 'Elongated', **csfont2, alpha=0.8, zorder=7, color='white')
+    plt.text(0.76, 0.72, 'Spheroidal', **csfont2, alpha=0.8, zorder=7, color='white')
+    
+    ax.tick_params(colors='black', which='both')
+    ax.spines['top'].set_color('black')
+    ax.spines['right'].set_color('black')
+    ax.spines['bottom'].set_color('black')
+    ax.spines['left'].set_color('black')
+
+    plt.show()
+
+def baca_age(csv_files, title=None):
+    # Read CSV files and add a 'source' column based on the filename
+    dfs = []
+    for csv_file in csv_files:
+        df = pd.read_csv(csv_file)
+        df['source'] = os.path.basename(csv_file)
+        dfs.append(df)
+    
+    df_all = pd.concat(dfs, ignore_index=True)
+    num_galaxies = len(df_all)
+    
+    required_columns = ['b/a', 'c/a', 'mass', 'Age Range']
+    missing_columns = [col for col in required_columns if col not in df_all.columns]
+    if missing_columns:
+        raise ValueError(f"Missing columns in the dataframe: {', '.join(missing_columns)}")
+    
+    # Calculate the average of each Age Range
+    df_all['Age Range Avg'] = df_all['Age Range'].apply(lambda x: np.mean(eval(x)))
+    
+    # Sort by the Age Range Avg
+    df_all = df_all.sort_values(by='Age Range Avg').reset_index(drop=True)
+    
+    # Categorize datasets based on filename patterns
+    df_firebox = df_all[df_all['source'].str.contains('FIREBox', na=False)]
+    df_firem10 = df_all[df_all['source'].str.contains('FIREm', na=False)]
+    df_fire_m12 = df_all[df_all['source'].str.contains('FIRE_m12', na=False)]
+    
+    ba_firebox = df_firebox['b/a']
+    ca_firebox = df_firebox['c/a']
+    mass_firebox = df_firebox['mass']
+    log_mass_firebox = np.log10(mass_firebox)
+    
+    ba_firem10 = df_firem10['b/a']
+    ca_firem10 = df_firem10['c/a']
+    mass_firem10 = df_firem10['mass']
+    log_mass_firem10 = np.log10(mass_firem10)
+    
+    ba_fire_m12 = df_fire_m12['b/a']
+    ca_fire_m12 = df_fire_m12['c/a']
+    mass_fire_m12 = df_fire_m12['mass']
+    log_mass_fire_m12 = np.log10(mass_fire_m12)
+    
+    csfont = {'size': '15'}
+    csfont1 = {'size': '13'}
+    csfont2 = {'size': '15'}
+    
+    plt.figure(figsize=(8, 6))
+    ax = plt.gca()
+    ax.set_facecolor('black')
+    
+    # Create a colormap that transitions from blue to red based on the sorted row index
+    colormap = cm.get_cmap('winter')
+    min_age = df_all['Age Range Avg'].min()
+    max_age = df_all['Age Range Avg'].max()
+    normalize = plt.Normalize(vmin=min_age, vmax=max_age)
+    
+    scatter1 = plt.scatter(ba_firebox, ca_firebox, c=df_firebox['Age Range Avg'], alpha=0.8, s=5, cmap='winter', norm=normalize, marker='.', zorder=6, label='FIREBox')
+    scatter2 = plt.scatter(ba_firem10, ca_firem10, c=df_firem10['Age Range Avg'], alpha=1, s=60, cmap='winter', norm=normalize, marker='^', zorder=6, label='FIRE')
+    scatter3 = plt.scatter(ba_fire_m12, ca_fire_m12, c=df_fire_m12['Age Range Avg'], alpha=1, s=60, cmap='winter', norm=normalize, marker='o', zorder=7, label='FIRE_m12')
+    
+    cbar = plt.colorbar(scatter1)
+    cbar.set_label('Stellar Age (Gyr)', **csfont1)
+    
+    plt.legend(loc='best')
+    
+    plt.xlabel('b/a', color='black', **csfont1)
+    plt.ylabel('c/a', color='black', **csfont1)
+    
+    # Determine the appropriate title based on the input files
+    if title is None:
+        title = "Galaxies in b/a vs. c/a space from "
+        if any("FIREBox_satellite" in os.path.basename(f) for f in csv_files):
+            title += "FIREBox"
+        elif any("FIREm10" in os.path.basename(f) for f in csv_files):
+            title += "FIRE"
+        elif any("FIRE_m12" in os.path.basename(f) for f in csv_files):
+            title += "FIRE_m12"
+        title += f" (N={num_galaxies})"
+    
+    
+    plt.title(title, color='black', **csfont)
+    plt.xlim([0, 1])
+    plt.ylim([0, 1])
+    
+    x = np.arange(0.0, 1.01, 0.01)
+    plt.plot(x, x, color='white', linestyle='-', zorder=5)
+    x_filtered = x[x >= 0.5]
+    y_filtered = 1 - x_filtered
+    plt.plot(x_filtered, y_filtered, color='white', linestyle='-', zorder=5)
+    plt.plot([1, 1], [0, 1], color='white', linestyle='-', zorder=5)
+    
+    plt.fill_between(x, x, 1 - x, where=(x >= 0.5), color='black', zorder=1)
+    plt.fill_between(x, x, where=(x <= 0.5), color='black', zorder=1)
+    plt.fill_between(x, 1 - x, where=(x >= 0.5), color='black', zorder=1)
+    
+    center = (1, 0)
+    radius = 0.4
+    theta = np.linspace(0, 2 * np.pi, 100)
+    plt.plot(center[0] + radius * np.cos(theta), center[1] + radius * np.sin(theta), color='white', linestyle='-', zorder=5)
+    plt.fill_between(center[0] + radius * np.cos(theta), center[1] + radius * np.sin(theta), color='black', zorder=1)
+    
+    plt.text(0.7, 0.11, 'Disky', **csfont2, alpha=0.8, zorder=7, color='white')
+    plt.text(0.3, 0.11, 'Elongated', **csfont2, alpha=0.8, zorder=7, color='white')
+    plt.text(0.76, 0.72, 'Spheroidal', **csfont2, alpha=0.8, zorder=7, color='white')
+    
+    ax.tick_params(colors='black', which='both')
+    ax.spines['top'].set_color('black')
+    ax.spines['right'].set_color('black')
+    ax.spines['bottom'].set_color('black')
+    ax.spines['left'].set_color('black')
+
+    plt.show()
+
+import pandas as pd
+import numpy as np
+import os
+import numpy as np
+import pandas as pd
+import os
+import matplotlib.pyplot as plt
+import matplotlib.cm as cm
+from scipy.integrate import quad
+
+def baca_lookback(csv_files, title=None):
+    """
+    Plot galaxies' b/a vs. c/a space colored by lookback time and connect points with arrows.
+    
+    Parameters:
+    csv_files (list of str): List of paths to the CSV files.
+    title (str, optional): Title for the plot.
+    H0 (float, optional): Hubble constant in km/s/Mpc. Default is 70.
+    Omega_m (float, optional): Matter density parameter. Default is 0.3.
+    Omega_Lambda (float, optional): Dark energy density parameter. Default is 0.7.
+    
+    Returns:
+    None
+    """
+
+    def lookback_time(z):
+        return Planck13.lookback_time(z).value
+    # Read CSV files and add a 'source' column based on the filename
+    dfs = []
+    for csv_file in csv_files:
+        df = pd.read_csv(csv_file)
+        df['source'] = os.path.basename(csv_file)
+        dfs.append(df)
+    
+    df_all = pd.concat(dfs, ignore_index=True)
+    num_galaxies = len(df_all)
+    
+    required_columns = ['b/a', 'c/a', 'mass', 'Redshift']
+    missing_columns = [col for col in required_columns if col not in df_all.columns]
+    if missing_columns:
+        raise ValueError(f"Missing columns in the dataframe: {', '.join(missing_columns)}")
+    
+    # Calculate lookback time for each galaxy
+    df_all['Lookback_Time'] = df_all['Redshift'].apply(lookback_time)
+    
+    # Sort by the lookback time
+    df_all = df_all.sort_values(by='Lookback_Time').reset_index(drop=True)
+    
+    # Categorize datasets based on filename patterns
+    df_firebox = df_all[df_all['source'].str.contains('FIREBox', na=False)]
+    df_firem10 = df_all[df_all['source'].str.contains('FIREm', na=False)]
+    df_fire_m12 = df_all[df_all['source'].str.contains('FIRE_m12', na=False)]
+    
+    ba_firebox = df_firebox['b/a']
+    ca_firebox = df_firebox['c/a']
+    mass_firebox = df_firebox['mass']
+    log_mass_firebox = np.log10(mass_firebox)
+    
+    ba_firem10 = df_firem10['b/a']
+    ca_firem10 = df_firem10['c/a']
+    mass_firem10 = df_firem10['mass']
+    log_mass_firem10 = np.log10(mass_firem10)
+    
+    ba_fire_m12 = df_fire_m12['b/a']
+    ca_fire_m12 = df_fire_m12['c/a']
+    mass_fire_m12 = df_fire_m12['mass']
+    log_mass_fire_m12 = np.log10(mass_fire_m12)
+    
+    csfont = {'size': '15'}
+    csfont1 = {'size': '13'}
+    csfont2 = {'size': '15'}
+    
+    plt.figure(figsize=(8, 6))
+    ax = plt.gca()
+    ax.set_facecolor('black')
+    
+    # Create a colormap that transitions from blue to red based on lookback time
+    colormap = cm.get_cmap('winter')
+    min_lookback_time = df_all['Lookback_Time'].min()
+    max_lookback_time = df_all['Lookback_Time'].max()
+    normalize = plt.Normalize(vmin=min_lookback_time, vmax=max_lookback_time)
+    
+    scatter1 = plt.scatter(ba_firebox, ca_firebox, c=df_firebox['Lookback_Time'], alpha=0.8, s=5, cmap='winter', norm=normalize, marker='.', zorder=6, label='FIREBox')
+    scatter2 = plt.scatter(ba_firem10, ca_firem10, c=df_firem10['Lookback_Time'], alpha=1, s=60, cmap='winter', norm=normalize, marker='^', zorder=6, label='FIRE')
+    scatter3 = plt.scatter(ba_fire_m12, ca_fire_m12, c=df_fire_m12['Lookback_Time'], alpha=1, s=60, cmap='winter', norm=normalize, marker='o', zorder=7, label='FIRE_m12')
+    
+    cbar = plt.colorbar(scatter1)
+    cbar.set_label('Lookback Time (Gyr)', **csfont1)
+    
+    plt.legend(loc='best')
+    
+    plt.xlabel('b/a', color='black', **csfont1)
+    plt.ylabel('c/a', color='black', **csfont1)
+    
+    # Set the title directly if provided, otherwise determine based on input files
+    if title is None:
+        title = "Galaxies in b/a vs. c/a space from "
+        if any("FIREBox_satellite" in os.path.basename(f) for f in csv_files):
+            title += "FIREBox"
+        elif any("FIREm10" in os.path.basename(f) for f in csv_files):
+            title += "FIRE"
+        elif any("FIRE_m12" in os.path.basename(f) for f in csv_files):
+            title += "FIRE_m12"
+        title += f" (N={num_galaxies})"
+    
+    plt.title(title, color='black', **csfont)
+    plt.xlim([0, 1])
+    plt.ylim([0, 1])
+    
+    # Draw arrows connecting points ordered by lookback time
+    for i in range(len(df_all) - 1):
+        plt.arrow(df_all['b/a'][i], df_all['c/a'][i], 
+                  df_all['b/a'][i+1] - df_all['b/a'][i], 
+                  df_all['c/a'][i+1] - df_all['c/a'][i],
+                  color='white', alpha=0.8, head_width=0.02, head_length=0.02, zorder = 6)
+    
+    x = np.arange(0.0, 1.01, 0.01)
+    plt.plot(x, x, color='white', linestyle='-', zorder=5)
+    x_filtered = x[x >= 0.5]
+    y_filtered = 1 - x_filtered
+    plt.plot(x_filtered, y_filtered, color='white', linestyle='-', zorder=5)
+    plt.plot([1, 1], [0, 1], color='white', linestyle='-', zorder=5)
+    
+    plt.fill_between(x, x, 1 - x, where=(x >= 0.5), color='black', zorder=1)
+    plt.fill_between(x, x, where=(x <= 0.5), color='black', zorder=1)
+    plt.fill_between(x, 1 - x, where=(x >= 0.5), color='black', zorder=1)
+    
+    center = (1, 0)
+    radius = 0.4
+    theta = np.linspace(0, 2 * np.pi, 100)
+    plt.plot(center[0] + radius * np.cos(theta), center[1] + radius * np.sin(theta), color='white', linestyle='-', zorder=5)
+    plt.fill_between(center[0] + radius * np.cos(theta), center[1] + radius * np.sin(theta), color='black', zorder=1)
+    
+    plt.text(0.7, 0.11, 'Disky', **csfont2, alpha=0.8, zorder=7, color='white')
+    plt.text(0.3, 0.11, 'Elongated', **csfont2, alpha=0.8, zorder=7, color='white')
+    plt.text(0.76, 0.72, 'Spheroidal', **csfont2, alpha=0.8, zorder=7, color='white')
+    
+    ax.tick_params(colors='black', which='both')
+    ax.spines['top'].set_color('black')
+    ax.spines['right'].set_color('black')
+    ax.spines['bottom'].set_color('black')
+    ax.spines['left'].set_color('black')
+
+    plt.show()
+
+
+import os
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import matplotlib.image as mpimg  # Add this import to handle image loading
+
+def baca4(csv_files, image_path = 'graphic.png'):
+    # Read CSV files and add a 'source' column based on the filename
+    dfs = []
+    for csv_file in csv_files:
+        df = pd.read_csv(csv_file)
+        df['source'] = os.path.basename(csv_file)
+        dfs.append(df)
+    
+    df_all = pd.concat(dfs, ignore_index=True)
+    num_galaxies = len(df_all)
+    
+    required_columns = ['b/a', 'c/a', 'mass']
+    missing_columns = [col for col in required_columns if col not in df_all.columns]
+    if (missing_columns):
+        raise ValueError(f"Missing columns in the dataframe: {', '.join(missing_columns)}")
+    
+    # Categorize datasets based on filename patterns
+    df_firebox = df_all[df_all['source'].str.contains('FIREBox', na=False)]
+    df_firem10 = df_all[df_all['source'].str.contains('FIREm', na=False)]
+    df_fire_m12 = df_all[df_all['source'].str.contains('FIRE_m12', na=False)]
+    
+    ba_firebox = df_firebox['b/a']
+    ca_firebox = df_firebox['c/a']
+    mass_firebox = df_firebox['mass']
+    log_mass_firebox = np.log10(mass_firebox)
+    
+    ba_firem10 = df_firem10['b/a']
+    ca_firem10 = df_firem10['c/a']
+    mass_firem10 = df_firem10['mass']
+    log_mass_firem10 = np.log10(mass_firem10)
+    
+    ba_fire_m12 = df_fire_m12['b/a']
+    ca_fire_m12 = df_fire_m12['c/a']
+    mass_fire_m12 = df_fire_m12['mass']
+    log_mass_fire_m12 = np.log10(mass_fire_m12)
+    
+    csfont = {'size': '15'}
+    csfont1 = {'size': '13'}
+    csfont2 = {'size': '15'}
+    
+    plt.figure(figsize=(8, 6))
+    ax = plt.gca()
+    ax.set_facecolor('black')
+    
+    # Overlay the external image
+    img = mpimg.imread(image_path)  # Load the image
+    ax.imshow(img, extent=[0, 1, 0, 1], aspect='auto', alpha=1, zorder=4)  # Adjust extent and alpha as needed
+    
+    scatter1 = plt.scatter(ba_firebox, ca_firebox, c=log_mass_firebox, alpha=0.8, s=5, cmap='inferno', marker='.', zorder=1, label='FIREBox')
+    scatter2 = plt.scatter(ba_firem10, ca_firem10, c=log_mass_firem10, alpha=1, s=60, cmap='inferno', marker='^', zorder=1, label='FIRE')
+    scatter3 = plt.scatter(ba_fire_m12, ca_fire_m12, c=log_mass_fire_m12, alpha=1, s=60, cmap='inferno', marker='o', zorder=1, label='FIRE_m12')
+    
+    vmin = df_all['mass'].apply(np.log10).min()-1
+    vmax = df_all['mass'].apply(np.log10).max()
+    scatter1.set_clim(vmin=vmin, vmax=vmax)
+    scatter2.set_clim(vmin=vmin, vmax=vmax)
+    scatter3.set_clim(vmin=vmin, vmax=vmax)
+    
+    cbar = plt.colorbar(scatter1)
+    cbar.set_label('log10(Stellar Mass)', **csfont1)
+    
+    plt.xlabel('b/a', color='black', **csfont1)
+    plt.ylabel('c/a', color='black', **csfont1)
+    
+    # Determine the appropriate title based on the input files
+    title = "Galaxies as Ellipsoids in b/a vs. c/a Space"
+    
+    plt.title(title, color='black', **csfont)
+    plt.xlim([0, 1])
+    plt.ylim([0, 1])
+    
+    x = np.arange(0.0, 1.01, 0.01)
+    plt.plot(x, x, color='white', linestyle='-', zorder=5)
+    x_filtered = x[x >= 0.5]
+    y_filtered = 1 - x_filtered
+    plt.plot(x_filtered, y_filtered, color='white', linestyle='-', zorder=5)
+    plt.plot([1, 1], [0, 1], color='white', linestyle='-', zorder=5)
+    
+    plt.fill_between(x, x, 1 - x, where=(x >= 0.5), color='black', zorder=1)
+    plt.fill_between(x, x, where=(x <= 0.5), color='black', zorder=1)
+    plt.fill_between(x, 1 - x, where=(x >= 0.5), color='black', zorder=1)
+    
+    center = (1, 0)
+    radius = 0.4
+    theta = np.linspace(0, 2 * np.pi, 100)
+    plt.plot(center[0] + radius * np.cos(theta), center[1] + radius * np.sin(theta), color='white', linestyle='-', zorder=5)
+    plt.fill_between(center[0] + radius * np.cos(theta), center[1] + radius * np.sin(theta), color='black', zorder=1)
+    
+    plt.text(0.7, 0.11, 'Disky', **csfont2, alpha=0.8, zorder=7, color='white')
+    plt.text(0.3, 0.11, 'Elongated', **csfont2, alpha=0.8, zorder=7, color='white')
+    plt.text(0.76, 0.72, 'Spheroidal', **csfont2, alpha=0.8, zorder=7, color='white')
+    
+    ax.tick_params(colors='black', which='both')
+    ax.spines['top'].set_color('black')
+    ax.spines['right'].set_color('black')
+    ax.spines['bottom'].set_color('black')
+    ax.spines['left'].set_color('black')
+
+    plt.show()
+
+def baca3(csv_files):
+    # Read CSV files and add a 'source' column based on the filename
+    dfs = []
+    for csv_file in csv_files:
+        df = pd.read_csv(csv_file)
+        df['source'] = os.path.basename(csv_file)
+        dfs.append(df)
+    
+    df_all = pd.concat(dfs, ignore_index=True)
+    num_galaxies = len(df_all)
+    
+    required_columns = ['b/a', 'c/a', 'mass']
+    missing_columns = [col for col in required_columns if col not in df_all.columns]
+    if missing_columns:
+        raise ValueError(f"Missing columns in the dataframe: {', '.join(missing_columns)}")
+    
+    # Categorize datasets based on filename patterns
+    df_firebox = df_all[df_all['source'].str.contains('FIREBox', na=False)]
+    df_firem10 = df_all[df_all['source'].str.contains('FIREm', na=False)]
+    df_fire_m12 = df_all[df_all['source'].str.contains('FIRE_m12', na=False)]
+    
+    ba_firebox = df_firebox['b/a']
+    ca_firebox = df_firebox['c/a']
+    mass_firebox = df_firebox['mass']
+    log_mass_firebox = np.log10(mass_firebox)
+    
+    ba_firem10 = df_firem10['b/a']
+    ca_firem10 = df_firem10['c/a']
+    mass_firem10 = df_firem10['mass']
+    log_mass_firem10 = np.log10(mass_firem10)
+    
+    ba_fire_m12 = df_fire_m12['b/a']
+    ca_fire_m12 = df_fire_m12['c/a']
+    mass_fire_m12 = df_fire_m12['mass']
+    log_mass_fire_m12 = np.log10(mass_fire_m12)
+    
+    csfont = {'size': '15'}
+    csfont1 = {'size': '13'}
+    csfont2 = {'size': '15'}
+    
+    plt.figure(figsize=(8, 6))
+    ax = plt.gca()
+    ax.set_facecolor('black')
+    
+    scatter1 = plt.scatter(ba_firebox, ca_firebox, c=log_mass_firebox, alpha=0.8, s=5, cmap='inferno', marker='.', zorder=1, label='FIREBox')
+    scatter2 = plt.scatter(ba_firem10, ca_firem10, c=log_mass_firem10, alpha=1, s=60, cmap='inferno', marker='^', zorder=1, label='FIRE')
+    scatter3 = plt.scatter(ba_fire_m12, ca_fire_m12, c=log_mass_fire_m12, alpha=1, s=60, cmap='inferno', marker='o', zorder=1, label='FIRE_m12')
+    
+    vmin = df_all['mass'].apply(np.log10).min()-1
+    vmax = df_all['mass'].apply(np.log10).max()
+    scatter1.set_clim(vmin=vmin, vmax=vmax)
+    scatter2.set_clim(vmin=vmin, vmax=vmax)
+    scatter3.set_clim(vmin=vmin, vmax=vmax)
+    
+    cbar = plt.colorbar(scatter1)
+    cbar.set_label('log10(Stellar Mass)', **csfont1)
+    
+    
+    plt.xlabel('b/a', color='black', **csfont1)
+    plt.ylabel('c/a', color='black', **csfont1)
+    
+    # Determine the appropriate title based on the input files
+    title = "Galaxies as Ellipsoids in b/a vs. c/a Space"
+    
+    plt.title(title, color='black', **csfont)
+    plt.xlim([0, 1])
+    plt.ylim([0, 1])
+    
+    x = np.arange(0.0, 1.01, 0.01)
+    plt.plot(x, x, color='white', linestyle='-', zorder=5)
+    x_filtered = x[x >= 0.5]
+    y_filtered = 1 - x_filtered
+    plt.plot(x_filtered, y_filtered, color='white', linestyle='-', zorder=5)
+    plt.plot([1, 1], [0, 1], color='white', linestyle='-', zorder=5)
+    
+    plt.fill_between(x, x, 1 - x, where=(x >= 0.5), color='black', zorder=1)
+    plt.fill_between(x, x, where=(x <= 0.5), color='black', zorder=1)
+    plt.fill_between(x, 1 - x, where=(x >= 0.5), color='black', zorder=1)
+    
+    center = (1, 0)
+    radius = 0.4
+    theta = np.linspace(0, 2 * np.pi, 100)
+    plt.plot(center[0] + radius * np.cos(theta), center[1] + radius * np.sin(theta), color='white', linestyle='-', zorder=5)
+    plt.fill_between(center[0] + radius * np.cos(theta), center[1] + radius * np.sin(theta), color='black', zorder=1)
+    
+    plt.text(0.7, 0.11, 'Disky', **csfont2, alpha=0.8, zorder=7, color='white')
+    plt.text(0.3, 0.11, 'Elongated', **csfont2, alpha=0.8, zorder=7, color='white')
+    plt.text(0.76, 0.72, 'Spheroidal', **csfont2, alpha=0.8, zorder=7, color='white')
+    
+    ax.tick_params(colors='black', which='both')
+    ax.spines['top'].set_color('black')
+    ax.spines['right'].set_color('black')
+    ax.spines['bottom'].set_color('black')
+    ax.spines['left'].set_color('black')
+
+    plt.show()
+
+
+
+def baca_redshift(csv_files, title=None):
+    # Read CSV files and add a 'source' column based on the filename
+    dfs = []
+    for csv_file in csv_files:
+        df = pd.read_csv(csv_file)
+        df['source'] = os.path.basename(csv_file)
+        dfs.append(df)
+    
+    df_all = pd.concat(dfs, ignore_index=True)
+    num_galaxies = len(df_all)
+    
+    required_columns = ['b/a', 'c/a', 'mass', 'Redshift']
+    missing_columns = [col for col in required_columns if col not in df_all.columns]
+    if missing_columns:
+        raise ValueError(f"Missing columns in the dataframe: {', '.join(missing_columns)}")
+    
+    # Sort by the redshift
+    df_all = df_all.sort_values(by='Redshift').reset_index(drop=True)
+    
+    # Categorize datasets based on filename patterns
+    df_firebox = df_all[df_all['source'].str.contains('FIREBox', na=False)]
+    df_firem10 = df_all[df_all['source'].str.contains('FIREm', na=False)]
+    df_fire_m12 = df_all[df_all['source'].str.contains('FIRE_m12', na=False)]
+    
+    ba_firebox = df_firebox['b/a']
+    ca_firebox = df_firebox['c/a']
+    mass_firebox = df_firebox['mass']
+    log_mass_firebox = np.log10(mass_firebox)
+    
+    ba_firem10 = df_firem10['b/a']
+    ca_firem10 = df_firem10['c/a']
+    mass_firem10 = df_firem10['mass']
+    log_mass_firem10 = np.log10(mass_firem10)
+    
+    ba_fire_m12 = df_fire_m12['b/a']
+    ca_fire_m12 = df_fire_m12['c/a']
+    mass_fire_m12 = df_fire_m12['mass']
+    log_mass_fire_m12 = np.log10(mass_fire_m12)
+    
+    csfont = {'size': '15'}
+    csfont1 = {'size': '13'}
+    csfont2 = {'size': '15'}
+    
+    plt.figure(figsize=(8, 6))
+    ax = plt.gca()
+    ax.set_facecolor('black')
+    
+    # Create a colormap that transitions from blue to red based on redshift
+    colormap = cm.get_cmap('winter')
+    min_redshift = df_all['Redshift'].min()
+    max_redshift = df_all['Redshift'].max()
+    normalize = plt.Normalize(vmin=min_redshift, vmax=max_redshift)
+    
+    scatter1 = plt.scatter(ba_firebox, ca_firebox, c=df_firebox['Redshift'], alpha=0.8, s=5, cmap='winter', norm=normalize, marker='.', zorder=6, label='FIREBox')
+    scatter2 = plt.scatter(ba_firem10, ca_firem10, c=df_firem10['Redshift'], alpha=1, s=60, cmap='winter', norm=normalize, marker='^', zorder=6, label='FIRE')
+    scatter3 = plt.scatter(ba_fire_m12, ca_fire_m12, c=df_fire_m12['Redshift'], alpha=1, s=60, cmap='winter', norm=normalize, marker='o', zorder=7, label='FIRE_m12')
+    
+    cbar = plt.colorbar(scatter1)
+    cbar.set_label('Redshift', **csfont1)
+    
+    plt.legend(loc='best')
+    
+    plt.xlabel('b/a', color='black', **csfont1)
+    plt.ylabel('c/a', color='black', **csfont1)
+    
+    # Set the title directly if provided, otherwise determine based on input files
+    if title is None:
+        title = "Galaxies in b/a vs. c/a space from "
+        if any("FIREBox_satellite" in os.path.basename(f) for f in csv_files):
+            title += "FIREBox"
+        elif any("FIREm10" in os.path.basename(f) for f in csv_files):
+            title += "FIRE"
+        elif any("FIRE_m12" in os.path.basename(f) for f in csv_files):
+            title += "FIRE_m12"
+        title += f" (N={num_galaxies})"
     
     plt.title(title, color='black', **csfont)
     plt.xlim([0, 1])
@@ -247,6 +1087,7 @@ def scatter_2d(galaxy, projection='xy', lim=None):
     plt.show()
 
 
+
 def hexbin_2d(galaxy, projection='xy', gridsize=50, cmap='inferno'):
     """
     Create a 2D hexbin plot of the final coordinates of the galaxy,
@@ -285,17 +1126,23 @@ def hexbin_2d(galaxy, projection='xy', gridsize=50, cmap='inferno'):
     else:
         raise ValueError("Invalid projection. Choose from 'xy', 'zx', or 'yz'.")
     
-    # Create a hexbin plot
+    # Create a hexbin plot with logarithm of counts
     plt.figure(figsize=(8, 6))
     hb = plt.hexbin(x, y, gridsize=gridsize, cmap=cmap)
     cb = plt.colorbar(hb)
-    cb.set_label('Counts')
+    cb.set_label('Log Counts')
+
+    # Transform counts to log scale
+    counts = hb.get_array()
+    cb.set_ticks([np.min(counts), np.max(counts)])
+    cb.set_ticklabels([f'{int(np.exp(min(counts)))}', f'{int(np.exp(max(counts)))}'])
 
     plt.xlabel(xlabel)
     plt.ylabel(ylabel)
     plt.title(f'2D Hexbin Plot of Galaxy ({projection.upper()} Projection)')
     
     plt.show()
+
 
 import numpy as np
 import matplotlib.pyplot as plt
