@@ -559,7 +559,9 @@ def baca_age(csv_files, title=None):
 
     plt.show()
 
-
+def lookback_time(z):
+        return Planck13.lookback_time(z).value
+    
 def baca_lookback(csv_files, title=None):
     """
     Plot galaxies' b/a vs. c/a space colored by lookback time and connect points with arrows.
@@ -694,12 +696,29 @@ def baca_lookback(csv_files, title=None):
     ax.spines['left'].set_color('black')
 
     plt.show()
+def radius_check(csv_file, title = None):
+    # Define the lookback time calculation function
+    def lookback_time(z):
+        return Planck13.lookback_time(z).value
+    
+    # Load data from the CSV file
+    df = pd.read_csv(csv_file)
+    
+    # Calculate Lookback Time and add it as a new column
+    df['Lookback_Time'] = df['Redshift'].apply(lookback_time)
+    
+    # Plotting
+    plt.figure(figsize=(10, 6))
+    plt.scatter(df['Lookback_Time'], df['Max Radius'], color='b')
+    plt.xlabel('Lookback Time (Gyr)')
+    plt.ylabel('Max Radius')
+    if title == None:
+        plt.title('Max Radius as a function of Lookback Time')
+    else: 
+        plt.title(title)
+    plt.grid(True)
+    plt.show()
 
-
-import os
-import numpy as np
-import pandas as pd
-import matplotlib.pyplot as plt
 import matplotlib.image as mpimg  # Add this import to handle image loading
 
 def baca4(csv_files, image_path = 'graphic.png'):
@@ -1010,34 +1029,314 @@ def baca_redshift(csv_files, title=None):
 
     plt.show()
 
+import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib.patches as patches
 
-def scatter_2d(galaxy, projection='xy', lim=None):
+def histogram_2d(coords, projection='xy', bins=100, lim=None, title=None, ax=None, show_labels=True, cmap='viridis', ellipse_params=None, colorbar=False):
     """
-    Create a 2D scatter plot of the final coordinates of the galaxy,
-    with the specified projection and optional axis limits, with a black
-    background limited to the plot area.
+    Create a 2D histogram of the coordinates, with the specified projection and optional axis limits.
+    
+    Optionally, add an ellipse to the plot.
 
     Parameters
     ----------
-    galaxy : dict
-        Dictionary containing the final galaxy coordinates and masses.
+    coords : array-like
+        Array of shape (n, 3) containing the x, y, z coordinates.
+    projection : str, optional
+        The projection to plot ('xy', 'zx', 'yz').
+    bins : int or [int, int], optional
+        The number of bins for the histogram (default is 100).
+    lim : float, optional
+        The limit for the plot axes (if None, limits are set based on data).
+    title : str, optional
+        The title of the plot.
+    ax : matplotlib.axes.Axes, optional
+        The axes object to plot on. If None, a new figure and axes will be created.
+    show_labels : bool, optional
+        Whether to display x and y labels. Default is True.
+    cmap : str, optional
+        The colormap to use for the histogram. Default is 'viridis'.
+    ellipse_params : dict, optional
+        Dictionary with keys 'center', 'major', 'minor', 'angle' to define the ellipse. Default is None.
+    colorbar : bool, optional
+        Whether to display the colorbar. Default is True.
+
+    Returns
+    -------
+    ax : matplotlib.axes.Axes
+        The axes object of the plot.
+    """
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(6, 6))  # Make the figure square
+
+    if projection == 'xy':
+        x = coords[:, 0]
+        y = coords[:, 1]
+        xlabel, ylabel = 'x (kpc)', 'y (kpc)'
+        if ellipse_params:
+            center = (ellipse_params['center'][0], ellipse_params['center'][1])
+    elif projection == 'zx':
+        x = coords[:, 2]
+        y = coords[:, 0]
+        xlabel, ylabel = 'z (kpc)', 'x (kpc)'
+        if ellipse_params:
+            center = (ellipse_params['center'][2], ellipse_params['center'][0])
+    elif projection == 'yz':
+        x = coords[:, 1]
+        y = coords[:, 2]
+        xlabel, ylabel = 'y (kpc)', 'z (kpc)'
+        if ellipse_params:
+            center = (ellipse_params['center'][1], ellipse_params['center'][2])
+    else:
+        raise ValueError("Invalid projection. Choose from 'xy', 'zx', or 'yz'.")
+
+    if lim is None:
+        lim = np.max(np.abs(coords))
+    
+    # Create 2D histogram
+    H, xedges, yedges = np.histogram2d(x, y, bins=bins, range=[[-lim, lim], [-lim, lim]])
+
+    # Log scale (add 1 to avoid log(0))
+    H = np.log10(H + 1)
+
+    # Plot the 2D histogram
+    extent = [xedges[0], xedges[-1], yedges[0], yedges[-1]]
+    img = ax.imshow(H.T, extent=extent, origin='lower', cmap=cmap, aspect='equal')  # Set aspect to 'equal'
+
+    if show_labels:
+        ax.set_xlabel(xlabel, color='white')
+        ax.set_ylabel(ylabel, color='white')
+    else:
+        ax.set_xlabel('')
+        ax.set_ylabel('')
+
+    if title:
+        ax.set_title(title, color='white')
+
+    ax.patch.set_facecolor('black')  # Set the background color of the plot area
+
+    plt.grid(False)  # Turn off grid lines
+
+    # Add color bar if requested
+    if colorbar:
+        cbar = plt.colorbar(img, ax=ax, fraction=0.046, pad=0.04)
+        cbar.set_label('log10(count + 1)', color='white')
+        cbar.ax.yaxis.set_tick_params(color='white')
+        plt.setp(plt.getp(cbar.ax.axes, 'yticklabels'), color='white')
+
+    # Add ellipse if parameters are provided
+    if ellipse_params:
+        ellipse = patches.Ellipse(
+            center,
+            width=2*ellipse_params['major'],
+            height=2*ellipse_params['minor'],
+            angle=ellipse_params.get('angle', 0),
+            edgecolor='red',
+            linewidth=2,
+            facecolor='none'
+        )
+        ax.add_patch(ellipse)
+
+    return ax
+
+import os
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib.patches as patches
+import re
+from ast import literal_eval
+
+def preprocess_center_of_mass(center_of_mass_str):
+    """
+    Convert the center of mass string from CSV into a properly formatted NumPy array.
+    """
+    formatted_str = center_of_mass_str.strip()
+    formatted_str = re.sub(r'\s+', ' ', formatted_str)
+    formatted_str = formatted_str.replace('[ ', '[').replace(' ]', ']')
+    formatted_str = re.sub(r',\s*,', ', ', formatted_str)
+    formatted_str = formatted_str.replace(' ', ',').replace('[,', '[').replace(',]', ']')
+    return np.zeros(3)
+    #return np.array(literal_eval(formatted_str))
+
+def preprocess_rotation_matrix(rotation_matrix_str):
+    """
+    Convert the rotation matrix string from CSV into a NumPy array.
+    """
+    formatted_str = rotation_matrix_str.strip()
+    formatted_str = re.sub(r'\s+', ' ', formatted_str)
+    formatted_str = formatted_str.replace('[ ', '[').replace(' ]', ']')
+    formatted_str = re.sub(r',\s*,', ', ', formatted_str)
+    formatted_str = formatted_str.replace(' ', ',').replace('[,', '[').replace(',]', ']')
+    return np.array(literal_eval(formatted_str))
+
+def compute_ellipse_params(center_of_mass, max_radius, axis_ratios, rotation_matrix, projection):
+    """
+    Compute ellipse parameters for a given projection.
+    """
+    if projection == 'xy':
+        major = max_radius
+        minor = max_radius * axis_ratios[0]  # b/a
+        angle = np.arctan2(rotation_matrix[1, 0], rotation_matrix[0, 0]) * 180 / np.pi
+        angle = 0
+    elif projection == 'zx':
+        major = max_radius
+        minor = max_radius * axis_ratios[1]  # c/a
+        angle = np.arctan2(rotation_matrix[2, 0], rotation_matrix[0, 0]) * 180 / np.pi
+        angle = 90
+    elif projection == 'yz':
+        major = max_radius * axis_ratios[0]  # b/a
+        minor = max_radius * axis_ratios[1]  # c/a
+        angle = np.arctan2(rotation_matrix[2, 1], rotation_matrix[1, 1]) * 180 / np.pi
+        angle = 0
+    else:
+        raise ValueError("Invalid projection. Choose from 'xy', 'zx', or 'yz'.")
+
+    return {
+        'center': center_of_mass,
+        'major': major,
+        'minor': minor,
+        'angle': angle
+    }
+
+def find_global_limit(folder_path):
+    """
+    Find the global limit for the axis by searching all CSV files for the largest value of any coordinate.
+    """
+    max_val = -np.inf
+    csv_files = [f for f in os.listdir(folder_path) if f.endswith('.csv') and 'INS' not in f]
+    
+    for csv_file in csv_files:
+        csv_path = os.path.join(folder_path, csv_file)
+        df = pd.read_csv(csv_path)
+        max_coord = df[['x', 'y', 'z']].max().max()
+        max_val = max(max_val, max_coord)
+    
+    return max_val
+
+def plot_evolution_hist2d(folder_path, ellipse_csv, show_labels=True):
+    """
+    Create a 3xN grid of 2D scatter plots from CSV files in the specified folder and ellipse data from another CSV file.
+
+    Parameters
+    ----------
+    folder_path : str
+        Path to the folder containing CSV files with coordinates.
+    ellipse_csv : str
+        Path to the CSV file containing ellipse data.
+    show_labels : bool, optional
+        Whether to display x and y labels in the plots. Default is True.
+    """
+    # Determine the global limit for the axis
+    global_limit = find_global_limit(folder_path)
+
+    # Get sorted list of CSV files excluding files with 'INS' in their names
+    csv_files = sorted([f for f in os.listdir(folder_path) if f.endswith('.csv') and 'INS' not in f])
+
+    num_files = len(csv_files)
+    if num_files == 0:
+        print("No CSV files found in the specified folder.")
+        return
+
+    # Load ellipse data
+    ellipse_data = pd.read_csv(ellipse_csv)
+
+    # Create a figure with a 3xN grid of subplots
+    fig, axes = plt.subplots(3, num_files, figsize=(num_files * 4, 12))
+
+    for i, csv_file in enumerate(csv_files):
+        # Load coordinates from CSV file
+        csv_path = os.path.join(folder_path, csv_file)
+        df = pd.read_csv(csv_path)
+        coords = df[['x', 'y', 'z']].values
+
+        # Extract galaxy name from the CSV file name
+        galaxy_name = csv_file.split('_')[0]
+        snap_num = csv_file.split('_')[-1].replace('.csv', '')
+
+        # Title for the first column
+        title = f"{galaxy_name} (stellar age < 0.1Gyr) projections at snapshot {snap_num}" if i == 0 else None
+
+        # Get ellipse parameters for the current snapshot
+        ellipse_row = ellipse_data[ellipse_data['Snapshot'] == int(snap_num)]
+        if not ellipse_row.empty:
+            max_radius = ellipse_row['Max Radius'].values[0]
+            axis_ratios = ellipse_row[['b/a', 'c/a', 'c/b']].values[0]
+            center_of_mass_str = ellipse_row['Center of Mass'].values[0]
+            rotation_matrix_str = ellipse_row['Rotation Matrix'].values[0]
+
+            # Preprocess the data
+            center_of_mass = preprocess_center_of_mass(center_of_mass_str)
+            rotation_matrix = preprocess_rotation_matrix(rotation_matrix_str)
+
+            ellipse_params_xy = compute_ellipse_params(center_of_mass, max_radius, axis_ratios, rotation_matrix, 'xy')
+            ellipse_params_zx = compute_ellipse_params(center_of_mass, max_radius, axis_ratios, rotation_matrix, 'zx')
+            ellipse_params_yz = compute_ellipse_params(center_of_mass, max_radius, axis_ratios, rotation_matrix, 'yz')
+        else:
+            ellipse_params_xy = ellipse_params_zx = ellipse_params_yz = None
+
+        # Plot projections with titles
+        histogram_2d(coords, 'xy', ax=axes[0, i], title=title, show_labels=show_labels, ellipse_params=ellipse_params_xy, lim=global_limit)
+        histogram_2d(coords, 'zx', ax=axes[1, i], show_labels=show_labels, ellipse_params=ellipse_params_zx, lim=global_limit)
+        histogram_2d(coords, 'yz', ax=axes[2, i], show_labels=show_labels, ellipse_params=ellipse_params_yz, lim=global_limit)
+
+    # Set column titles
+    for ax, csv_file in zip(axes[0], csv_files):
+        galaxy_name = csv_file.split('_')[0]
+        snap_num = int(csv_file.split('_')[-1].replace('.csv', ''))
+
+        redshift = z(snap_num, '/DFS-L/DATA/cosmo/grenache/omyrtaj/fofie/snapshot_times.txt')
+        lt = round(lookback_time(redshift), 2)
+        ax.set_title(f"{galaxy_name} at Lookback Time {lt} Gyr", fontsize=12)
+
+    # Set row titles
+    row_titles = ['XY Projection', 'ZX Projection', 'YZ Projection']
+    for ax, title in zip(axes[:, 0], row_titles):
+        ax.set_ylabel(title, rotation=90, fontsize=12, labelpad=15)
+    
+    # Adjust layout
+    plt.tight_layout()
+    plt.show()
+
+
+# Example usage:
+# plot_evolution_hist2d('path/to/folder', 'path/to/ellipse_data.csv')
+
+
+
+def scatter_2d(coords, projection='xy', lim=None, title=None, ax=None, show_labels=False):
+    """
+    Create a 2D scatter plot of the coordinates, with the specified projection and optional axis limits.
+    
+    Parameters
+    ----------
+    coords : array-like
+        Array of shape (n, 3) containing the x, y, z coordinates.
     projection : str, optional
         The projection to plot ('xy', 'zx', 'yz').
     lim : float, optional
         The limit for the plot axes (if None, limits are set based on data).
-
+    title : str, optional
+        The title of the plot.
+    ax : matplotlib.axes.Axes, optional
+        The axes object to plot on. If None, a new figure and axes will be created.
+    show_labels : bool, optional
+        Whether to display x and y labels. Default is True.
+    
     Returns
     -------
-    None
-        Displays the plot.
+    ax : matplotlib.axes.Axes
+        The axes object of the plot.
     """
-    coords = galaxy['Coordinates']
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(6, 4))
     
     if projection == 'xy':
         x = coords[:, 0]
         y = coords[:, 1]
         xlabel, ylabel = 'x (kpc)', 'y (kpc)'
-    elif projection == 'zx':  # switched from 'xz' to 'zx'
+    elif projection == 'zx':
         x = coords[:, 2]
         y = coords[:, 0]
         xlabel, ylabel = 'z (kpc)', 'x (kpc)'
@@ -1052,22 +1351,89 @@ def scatter_2d(galaxy, projection='xy', lim=None):
     if lim is None:
         lim = np.max(np.abs(coords))
     
-    # Create a scatter plot with a black background limited to the plot area
-    fig, ax = plt.subplots(figsize=(8, 6))
     ax.scatter(x, y, s=1, alpha=0.5, color='c')  # Adjust the marker size 's' and color as needed
 
     ax.set_xlim(-lim, lim)
     ax.set_ylim(-lim, lim)
 
-    ax.set_xlabel(xlabel, color='black')
-    ax.set_ylabel(ylabel, color='black')
-    ax.set_title(f'2D Scatter Plot of Galaxy ({projection.upper()} Projection)', color='black')
+    if show_labels:
+        ax.set_xlabel(xlabel, color='black')
+        ax.set_ylabel(ylabel, color='black')
+    else:
+        ax.set_xlabel('')
+        ax.set_ylabel('')
+    
+    if title:
+        ax.set_title(title, color='black')
     
     ax.patch.set_facecolor('black')  # Set the background color of the plot area
 
     plt.grid(False)  # Turn off grid lines
     
+    return ax
+
+def plot_evolution_scatter(folder_path, show_labels=True):
+    """
+    Create 2D scatter plots for all CSV files in the specified folder and arrange them in a 3xN grid.
+
+    Parameters
+    ----------
+    folder_path : str
+        Path to the folder containing CSV files.
+    show_labels : bool, optional
+        Whether to display x and y labels in the scatter plots. Default is True.
+    
+    Returns
+    -------
+    None
+        Displays the plots.
+    """
+    # List all CSV files in the folder and sort by name
+    # csv_files = sorted([f for f in os.listdir(folder_path) if f.endswith('.csv')])
+    csv_files = sorted([f for f in os.listdir(folder_path) if f.endswith('.csv') and 'INS' not in f])
+    global_limit = find_global_limit(folder_path)
+    num_files = len(csv_files)
+    if num_files == 0:
+        print("No CSV files found in the specified folder.")
+        return
+    
+    # Create a figure with a 3xN grid of subplots
+    fig, axes = plt.subplots(3, num_files, figsize=(num_files * 4, 12))
+    
+    for i, csv_file in enumerate(csv_files):
+        # Load coordinates from CSV file
+        csv_path = os.path.join(folder_path, csv_file)
+        df = pd.read_csv(csv_path)
+        coords = df[['x', 'y', 'z']].values
+        
+        # Extract galaxy name from the CSV file name
+        galaxy_name = csv_file.split('_')[0]
+        snap_num = csv_file.split('_')[-1].replace('.csv', '')
+        title = f"{galaxy_name} (stellar age < 0.1Gyr) projections at snapshot {snap_num}"
+        
+        # Plot projections with titles
+        scatter_2d(coords, 'xy', ax=axes[0, i], title=title if i == 0 else None, show_labels=show_labels, lim = global_limit)
+        scatter_2d(coords, 'zx', ax=axes[1, i], show_labels=show_labels, lim = global_limit)
+        scatter_2d(coords, 'yz', ax=axes[2, i], show_labels=show_labels, lim = global_limit)
+    
+    # Set column titles
+    for ax, csv_file in zip(axes[0], csv_files):
+        galaxy_name = csv_file.split('_')[0]
+        snap_num = int(csv_file.split('_')[-1].replace('.csv', ''))
+
+        redshift = z(snap_num, '/DFS-L/DATA/cosmo/grenache/omyrtaj/fofie/snapshot_times.txt')
+        lt = round(lookback_time(redshift), 2)
+        ax.set_title(f"{galaxy_name} at Lookback Time {lt} Gyr", fontsize=12)
+
+    # Set row titles
+    row_titles = ['XY Projection', 'ZX Projection', 'YZ Projection']
+    for ax, title in zip(axes[:, 0], row_titles):
+        ax.set_ylabel(title, rotation=90, fontsize=12, labelpad=15)
+    
+    # Adjust layout
+    plt.tight_layout()
     plt.show()
+
 
 
 
@@ -1280,3 +1646,34 @@ def scatter_ellipsoid_3d(galaxy, axis_lengths=(1, 1, 1), lim=None):
     plt.grid(False)  # Turn off grid lines
     
     plt.show()
+def z(snapshot, file_path):
+    try:
+        # Normalize the snapshot input by stripping leading zeros
+        snapshot_str = str(snapshot).lstrip('0')
+        
+        with open(file_path, 'r') as file:
+            lines = file.readlines()
+            
+            for line in lines:
+                if line.startswith("#") or not line.strip():
+                    # Skip comments and empty lines
+                    continue
+                
+                parts = line.split()
+                if not parts[0].isdigit():
+                    # Skip lines where the first part is not a digit
+                    continue
+                
+                # Normalize the snapshot number in the file by stripping leading zeros
+                snapshot_num_str = parts[0].lstrip('0')
+                redshift = float(parts[2])
+                
+                if snapshot_num_str == snapshot_str:
+                    return redshift
+
+        raise ValueError(f"Snapshot {snapshot} not found in the file.")
+    
+    except FileNotFoundError:
+        raise FileNotFoundError(f"The file at {file_path} was not found.")
+    except Exception as e:
+        raise Exception(f"An error occurred: {e}")

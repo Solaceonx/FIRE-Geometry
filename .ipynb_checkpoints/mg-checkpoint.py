@@ -611,7 +611,7 @@ def partition_age(star_center_copy, age_partitions):
     return partitioned_star
 
 
-def iter_RIT_3d(star_input, max_iterations=30, tolerance=1e-4, initial_max_radius=400.0, particle_fraction=1.0, particle_bound = 1000):
+def iter_RIT_3d(star_input, max_iterations=30, tolerance=1e-3, initial_max_radius=400.0, particle_fraction=1.0, particle_bound = 1000):
     """
     Perform an iterative calculation of the Reduced Inertia Tensor (RIT) for a galaxy, 
     holding the volume constant.
@@ -1334,7 +1334,7 @@ def measure_m12(sim_inputs, snap_num, host=1, age_range = 15):
         else: 
             individual_output_file = 'FIRE_' + str(sim) + '_' + str(age_range) + '_' + str(snap_num) + '_2.csv'
         
-        print(f"loading galaxy '{sim}'")
+        # print(f"loading galaxy '{sim}'")
         start_time = time.time()
         
         halo_path = '/DFS-L/DATA/cosmo/grenache/omyrtaj/FIRE/' + str(sim) + '/halo/rockstar_dm/catalog_hdf5/'
@@ -1347,47 +1347,52 @@ def measure_m12(sim_inputs, snap_num, host=1, age_range = 15):
 
         # correct stellar age calculation
         star_snapdict['StellarAge'] = np.array(star_snapdict['StellarAge'])
+        
         curr_time = Planck13.lookback_time(redshift).value
         star_snapdict['StellarAge'] -= curr_time
 
         # code to mask young stars, need to increase age range
-        mask = star_snapdict['StellarAge'] <= age_range
-        if len(star_snapdict['StellarAge'][mask]) < 1000:
-            sorted_indices = np.argsort(star_snapdict['StellarAge'])
-            youngest_indices = sorted_indices[:1000]
-            for key, value in star_snapdict.items():
-                if isinstance(value, list):
-                    value = np.array(value)  # Convert lists to NumPy arrays
-                if isinstance(value, np.ndarray) and len(value) > 1000:
-                    star_snapdict[key] = value[youngest_indices] 
-                else:
-                    star_snapdict[key] = value
-
-        else: 
-            for key, value in star_snapdict.items():
-                if isinstance(value, list):
-                    value = np.array(value)  # Convert lists to NumPy arrays
-                if isinstance(value, np.ndarray) and len(value) == len(mask):
-                    star_snapdict[key] = value[mask]
-                else:
-                    star_snapdict[key] = value
-
-        
-        # new code check this to make sure it's right 
-        '''
-        if len(star_snapdict['StellarAge']) < 100:
-            sorted_indices = np.argsort(star_snapdict['StellarAge'])
-            youngest_indices = sorted_indices[:1000]
-            for key, value in star_snapdict.items():
-                if isinstance(value, np.ndarray) and len(value) > 1000:
-                    star_snapdict[key] = value[youngest_indices]  
-            '''
+        if len(star_snapdict['StellarAge']) >= 5000:
+            mask = star_snapdict['StellarAge'] <= age_range
+            if len(star_snapdict['StellarAge'][mask]) <= 5000:
+                sorted_indices = np.argsort(star_snapdict['StellarAge'])
+                youngest_indices = sorted_indices[:5000]
+                for key, value in star_snapdict.items():
+                    if isinstance(value, list):
+                        value = np.array(value)  # Convert lists to NumPy arrays
+                    if isinstance(value, np.ndarray) and len(value) > 5000:
+                        star_snapdict[key] = value[youngest_indices] 
+                    else:
+                        star_snapdict[key] = value
+    
+            else: 
+                for key, value in star_snapdict.items():
+                    if isinstance(value, list):
+                        value = np.array(value)  # Convert lists to NumPy arrays
+                    if isinstance(value, np.ndarray) and len(value) == len(mask):
+                        star_snapdict[key] = value[mask]
+                    else:
+                        star_snapdict[key] = value
+            
+                    
         star_center, gas_center, halo2 = galaxy_tools.mask_sim_to_halo(
                         star_snapdict, gas_snapdict, halo, orient=False, lim=True, limvalue=halo['rvir'].values[0] * 0.1)
-        
+        '''star_center, cm = center_mass(star_center)
+        I, A, B, C, _, _, _, _ = reduced_tensor_3d(star_center)
+        a, b, c = A, B, C
+        A, B, C, Av, Bv, Cv = principal_axes_3d(I)
+        V0 = np.stack([Av, Bv, Cv], axis=-1) 
+        V1 = np.eye(3) 
+        inv_matrix = np.linalg.solve(V0, V1)
+        final_matrix = inv_matrix
+        coords_rotated = np.dot(star['Coordinates'], inv_matrix)
+        coords_rotated = coords.dot(inv_matrix.T) 
+        coords_rotated = [list(inv_matrix.dot(coord)) for coord in coords]
+        star['Coordinates'] = coords_rotated
+        '''
         mask_end_time = time.time()
         
-        result = iter_RIT_3d(star_center, initial_max_radius=50000000000000.0)
+        result = iter_RIT_3d(star_center)
         iter_end_time = time.time()
         
         if result:
@@ -1419,10 +1424,81 @@ def measure_m12(sim_inputs, snap_num, host=1, age_range = 15):
         
         csv_3d('m12 redshift shapes', individual_output_file, individual_result)
         write_end_time = time.time()
+        print(f"Measured galaxy '{sim}' at snapshot '{snap_num}' in {write_end_time - start_time:.2f} seconds")
+        return star_center
+        # print(f"Time taken for loading: {load_end_time - load_start_time:.2f} seconds")
+        # print(f"Time taken for masking: {mask_end_time - load_end_time:.2f} seconds")
         
-        print(f"Time taken for loading: {load_end_time - load_start_time:.2f} seconds")
-        print(f"Time taken for masking: {mask_end_time - load_end_time:.2f} seconds")
-        print(f"Total time taken for galaxy '{sim}': {write_end_time - start_time:.2f} seconds")
+
+import numpy as np
+import pandas as pd
+from astropy.cosmology import Planck13
+import galaxy_tools
+import time
+
+# Assuming the definition of the z function and galaxy_tools methods exist and work correctly
+
+def measure_m12_coords(sim_inputs, snap_num, host=1, age_range=15):
+    redshift = z(snap_num, '/DFS-L/DATA/cosmo/grenache/omyrtaj/fofie/snapshot_times.txt')
+    for sim in sim_inputs:
+        individual_result = []
+        if host == 1: 
+            individual_output_file = 'FIRE_' + str(sim) + '_' + str(age_range) + '_' + str(snap_num) + '.csv'
+        else: 
+            individual_output_file = 'FIRE_' + str(sim) + '_' + str(age_range) + '_' + str(snap_num) + '_2.csv'
+        
+        print(f"loading galaxy '{sim}'")
+        start_time = time.time()
+        
+        halo_path = '/DFS-L/DATA/cosmo/grenache/omyrtaj/FIRE/' + str(sim) + '/halo/rockstar_dm/catalog_hdf5/'
+        sim_path = '/DFS-L/DATA/cosmo/grenache/omyrtaj/FIRE/' + str(sim) + '/output/snapdir_' + str(snap_num) + '/'
+        
+        load_start_time = time.time()
+        halo = galaxy_tools.load_halo(halo_path, snap_num, host=True, filetype='hdf5', hostnumber=host)
+        star_snapdict, gas_snapdict = galaxy_tools.load_sim(sim_path, snap_num)
+        load_end_time = time.time()
+        if len(star_snapdict['StellarAge']) < 1000:
+            continue
+        # correct stellar age calculation
+        star_snapdict['StellarAge'] = np.array(star_snapdict['StellarAge'])
+        curr_time = Planck13.lookback_time(redshift).value
+        star_snapdict['StellarAge'] -= curr_time
+
+        # code to mask young stars, need to increase age range
+        mask = star_snapdict['StellarAge'] <= age_range
+        if len(star_snapdict['StellarAge'][mask]) < 1000:
+            sorted_indices = np.argsort(star_snapdict['StellarAge'])
+            youngest_indices = sorted_indices[:1000]
+            for key, value in star_snapdict.items():
+                if isinstance(value, list):
+                    value = np.array(value)  # Convert lists to NumPy arrays
+                if isinstance(value, np.ndarray) and len(value) > 1000:
+                    star_snapdict[key] = value[youngest_indices] 
+                else:
+                    star_snapdict[key] = value
+        
+        else: 
+            for key, value in star_snapdict.items():
+                if isinstance(value, list):
+                    value = np.array(value)  # Convert lists to NumPy arrays
+                if isinstance(value, np.ndarray) and len(value) == len(mask):
+                    star_snapdict[key] = value[mask]
+                else:
+                    star_snapdict[key] = value
+                    
+        star_center, gas_center, halo2 = galaxy_tools.mask_sim_to_halo(
+                        star_snapdict, gas_snapdict, halo, orient=False, lim=True, limvalue=halo['rvir'].values[0] * 0.1)
+        if len(star_center['StellarAge']) < 1000:
+            return None
+        return star_center  # Return star_center for further processing
+
+
+def save_coordinates(star_center, output_file):
+    coordinates = star_center['Coordinates']
+    df = pd.DataFrame(coordinates, columns=['x', 'y', 'z'])
+    os.makedirs(os.path.dirname(output_file), exist_ok=True)
+    df.to_csv(output_file, index=False)
+    print(f"Coordinates saved to {output_file}")
 
 def z(snapshot, file_path):
     try:
