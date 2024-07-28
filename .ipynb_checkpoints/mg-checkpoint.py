@@ -1324,6 +1324,131 @@ def outlier_shape3d(sim_inputs, output_file, cutoff_radius = 100, cm = [0, 0, 0]
     return results        
 
 import time
+def measure_m12age(sim_inputs, snap_num, host=1, age_range = 15, age_range2 = [[0, 15]]):
+    redshift = z(snap_num, '/DFS-L/DATA/cosmo/grenache/omyrtaj/fofie/snapshot_times.txt')
+    for sim in sim_inputs:
+        individual_result = []
+        if host == 1: 
+            individual_output_file = 'FIRE_' + str(sim) + '_StellarAge' + str(age_range) + '_' + str(snap_num) + '.csv'
+        else: 
+            individual_output_file = 'FIRE_' + str(sim) + '_StellarAge' + str(age_range) + '_' + str(snap_num) + '_2.csv'
+        
+        # print(f"loading galaxy '{sim}'")
+        start_time = time.time()
+        
+        halo_path = '/DFS-L/DATA/cosmo/grenache/omyrtaj/FIRE/' + str(sim) + '/halo/rockstar_dm/catalog_hdf5/'
+        sim_path = '/DFS-L/DATA/cosmo/grenache/omyrtaj/FIRE/' + str(sim) + '/output/snapdir_' + str(snap_num) + '/'
+        
+        load_start_time = time.time()
+        
+        halo = galaxy_tools.load_halo(halo_path, snap_num, host=True, filetype='hdf5', hostnumber=host)
+        star_snapdict, gas_snapdict = galaxy_tools.load_sim(sim_path, snap_num)
+        load_end_time = time.time()
+        print(f"Time taken for loading: {load_end_time - load_start_time:.2f} seconds")
+        # correct stellar age calculation
+        star_snapdict['StellarAge'] = np.array(star_snapdict['StellarAge'])
+        
+        curr_time = Planck13.lookback_time(redshift).value
+        star_snapdict['StellarAge'] -= curr_time
+        star_master = copy.deepcopy(star_snapdict)
+
+        for i in age_range2:
+            start_age, end_age = i
+            # Filter stars based on the specified age range
+            range_mask = (star_master['StellarAge'] >= start_age) & (star_master['StellarAge'] < end_age)
+            # star_snapdict = {key: value[range_mask] for key, value in star_master.items()}
+            star_snapdict = copy.deepcopy(star_master)
+            
+            for key, value in star_snapdict.items():
+                    if isinstance(value, list):
+                        value = np.array(value)  # Convert lists to NumPy arrays
+                    if isinstance(value, np.ndarray) and len(value) == len(range_mask):
+                        star_snapdict[key] = value[range_mask]
+                    else:
+                        star_snapdict[key] = value
+
+            
+            
+            # code to mask young stars, need to increase age range
+            if len(star_snapdict['StellarAge']) >= 5000:
+                mask = star_snapdict['StellarAge'] <= age_range
+                if len(star_snapdict['StellarAge'][mask]) <= 5000:
+                    sorted_indices = np.argsort(star_snapdict['StellarAge'])
+                    youngest_indices = sorted_indices[:5000]
+                    for key, value in star_snapdict.items():
+                        if isinstance(value, list):
+                            value = np.array(value)  # Convert lists to NumPy arrays
+                        if isinstance(value, np.ndarray) and len(value) > 5000:
+                            star_snapdict[key] = value[youngest_indices] 
+                        else:
+                            star_snapdict[key] = value
+        
+                else: 
+                    for key, value in star_snapdict.items():
+                        if isinstance(value, list):
+                            value = np.array(value)  # Convert lists to NumPy arrays
+                        if isinstance(value, np.ndarray) and len(value) == len(mask):
+                            star_snapdict[key] = value[mask]
+                        else:
+                            star_snapdict[key] = value
+                
+                        
+            star_center, gas_center, halo2 = galaxy_tools.mask_sim_to_halo(
+                            star_snapdict, gas_snapdict, halo, orient=False, lim=True, limvalue=halo['rvir'].values[0] * 0.1)
+            star_center, cm = center_mass(star_center)
+            I, A, B, C, _, _, _, _ = reduced_tensor_3d(star_center, 1, 1, 1)
+            A, B, C, Av, Bv, Cv = principal_axes_3d(I)
+            V0 = np.stack([Av, Bv, Cv], axis=-1) 
+            V1 = np.eye(3) 
+            inv_matrix = np.linalg.solve(V0, V1)
+            coords = star_center['Coordinates']
+            coords = np.array(coords)
+            coords_rotated = coords.dot(inv_matrix.T) 
+            star_center['Coordinates'] = coords_rotated
+            star_center_copy = copy.deepcopy(star_center)
+            
+            mask_end_time = time.time()
+            
+            result = iter_RIT_3d(star_center_copy)
+            iter_end_time = time.time()
+            
+            if result:
+                individual_result.append({
+                    'simulation': sim,
+                    'a': result['a'],
+                    'b': result['b'],
+                    'c': result['c'],
+                    'b/a': result['b/a'],
+                    'c/a': result['c/a'],
+                    'c/b': result['c/b'],
+                    'ellipticity': result['ellipticity'],
+                    'triaxiality': result['triaxiality'],
+                    'iterations': result['iterations'],
+                    'initial_particles': result['initial_particles'],
+                    'remaining_particles': result['remaining_particles'],
+                    'max_radius': result['max_radius'],
+                    'r_50': result['r_50'],
+                    'mass': result['mass'],
+                    'cm': result['cm'],
+                    'snap_num': snap_num, 
+                    'redshift': redshift,
+                    'age_range': result['age_range'],
+                    'rotation_matrix': result['rotation_matrix'],
+                    'remaining_galaxy': result['remaining_galaxy']
+                })
+            
+            print('measured galaxy ' + str(sim) + 'with stellar population: ' + str(i))
+            
+            csv_3d('m12 redshift shapes', individual_output_file, individual_result)
+            csv_file = 'm12 redshift shapes/romeo_03/romeo_coords_' + str(start_age) +'_' + str(snap_num) + '.csv'
+            save_coordinates(star_center, csv_file)
+            write_end_time = time.time()
+            print(f"Measured galaxy '{sim}' at snapshot '{snap_num}' in {write_end_time - start_time:.2f} seconds")
+            
+        # print(f"Time taken for loading: {load_end_time - load_start_time:.2f} seconds")
+        # print(f"Time taken for masking: {mask_end_time - load_end_time:.2f} seconds")
+
+
 
 def measure_m12(sim_inputs, snap_num, host=1, age_range = 15):
     redshift = z(snap_num, '/DFS-L/DATA/cosmo/grenache/omyrtaj/fofie/snapshot_times.txt')

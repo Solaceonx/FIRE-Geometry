@@ -4,7 +4,7 @@ import matplotlib
 
 import matplotlib.cm as cm
 from astropy.cosmology import Planck13
-
+import textwrap
 import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
@@ -39,7 +39,7 @@ def truncate_colormap(cmap, minval=0.0, maxval=1.0, n=100):
 
 
 
-def ca_a_scatter(csv_files, title=None):
+def ca_a_scatter(csv_files, shift = None, title=None):
     dfs = []
     for csv_file in csv_files:
         df = pd.read_csv(csv_file)
@@ -49,15 +49,16 @@ def ca_a_scatter(csv_files, title=None):
     df_all = pd.concat(dfs, ignore_index=True)
     num_galaxies = len(df_all)
     
-    required_columns = ['Max Radius', 'c/a', 'Age Range']
+    required_columns = ['Max Radius', 'c/a', 'Age Range', 'Redshift']
     missing_columns = [col for col in required_columns if col not in df_all.columns]
     if missing_columns:
         raise ValueError(f"Missing columns in the dataframe: {', '.join(missing_columns)}")
-    
+    df_all['Lookback_Time'] = df_all['Redshift'].apply(lookback_time)
     df_all['c/a * Max Radius'] = df_all['c/a'] * df_all['Max Radius']
     df_all['Max Radius log10'] = df_all['Max Radius']
     df_all['Age Range Avg'] = df_all['Age Range'].apply(lambda x: np.mean(eval(x)))
-    
+    if shift == True:
+        df_all['Age Range Avg'] += df_all['Lookback_Time']
     csfont = {'size': '13'}
     csfont1 = {'size': '12'}
     
@@ -75,7 +76,10 @@ def ca_a_scatter(csv_files, title=None):
     scatter = plt.scatter(df_all['Max Radius log10'], df_all['c/a'], c=df_all['Age Range Avg'], cmap=colormap, norm=normalize, alpha=1.0, s=50)
     
     cbar = plt.colorbar(scatter)
-    cbar.set_label('Stellar Age (Gyr)', **csfont1)
+    if shift == True:
+         cbar.set_label('Lookback Time (Gyr)', **csfont1)
+    else:
+        cbar.set_label('Stellar Age (Gyr)', **csfont1)
     plt.xlabel('Major axis a (kpc)', **csfont1)
     plt.ylabel('Axis Ratios (c/a)', **csfont1)
     
@@ -1099,6 +1103,7 @@ def baca_redshift(csv_files, title=None):
     ax.spines['left'].set_color('black')
 
     plt.show()
+
 def histogram_2d(coords, projection='xy', bins=100, lim=None, title=None, ax=None, show_labels=True, cmap='viridis', ellipse_params=None, colorbar=False):
     """
     Create a 2D histogram of the coordinates, with the specified projection and optional axis limits.
@@ -1140,20 +1145,26 @@ def histogram_2d(coords, projection='xy', bins=100, lim=None, title=None, ax=Non
         x = coords[:, 0]
         y = coords[:, 1]
         xlabel, ylabel = 'x (kpc)', 'y (kpc)'
+        ar = 'b/a'
         if ellipse_params:
             center = (ellipse_params['center'][0], ellipse_params['center'][1])
+            axis_ratio = ellipse_params['minor'] / ellipse_params['major']
     elif projection == 'zx':
         x = coords[:, 2]
         y = coords[:, 0]
         xlabel, ylabel = 'z (kpc)', 'x (kpc)'
+        ar = 'c/a'
         if ellipse_params:
             center = (ellipse_params['center'][2], ellipse_params['center'][0])
+            axis_ratio = ellipse_params['minor'] / ellipse_params['major']
     elif projection == 'yz':
         x = coords[:, 1]
         y = coords[:, 2]
         xlabel, ylabel = 'y (kpc)', 'z (kpc)'
+        ar = 'c/b'
         if ellipse_params:
             center = (ellipse_params['center'][1], ellipse_params['center'][2])
+            axis_ratio = ellipse_params['minor'] / ellipse_params['major']
     else:
         raise ValueError("Invalid projection. Choose from 'xy', 'zx', or 'yz'.")
 
@@ -1204,15 +1215,20 @@ def histogram_2d(coords, projection='xy', bins=100, lim=None, title=None, ax=Non
         )
         ax.add_patch(ellipse)
 
+        # Add axis ratio text
+        
+        axis_ratio_text = ar + f": {axis_ratio:.2f}"
+        ax.text(-lim + 0.05 * (2 * lim), lim - 0.1 * (2 * lim), axis_ratio_text, color='white', fontsize=10, ha='left')
+
     # Add a white line labeled '5 kpc' at the bottom left of the plot
     fixed_position_x = -lim + 0.05 * (2 * lim)  # 5% offset from the left
     fixed_position_y = -lim + 0.05 * (2 * lim)  # 5% offset from the bottom
     line_length = 5
     ax.plot([fixed_position_x, fixed_position_x + line_length], [fixed_position_y, fixed_position_y], color='white', lw=4)
-    ax.text(fixed_position_x + line_length / 2, fixed_position_y + line_length/10, '5 kpc', color='white', fontsize=10, ha='center')
-
+    ax.text(fixed_position_x + line_length / 2, fixed_position_y + 0.05 * (lim), '5 kpc', color='white', fontsize=10, ha='center')
 
     return ax
+
 
 
 import matplotlib.pyplot as plt
@@ -1322,7 +1338,7 @@ def plot_evolution_hist2d(folder_path, ellipse_csv, show_labels=True):
         csv_path = os.path.join(folder_path, csv_file)
         df = pd.read_csv(csv_path)
         coords = df[['x', 'y', 'z']].values
-
+        
         # Extract galaxy name from the CSV file name
         galaxy_name = csv_file.split('_')[0]
         snap_num = csv_file.split('_')[-1].replace('.csv', '')
@@ -1370,6 +1386,113 @@ def plot_evolution_hist2d(folder_path, ellipse_csv, show_labels=True):
     # Adjust layout
     plt.tight_layout()
     plt.show()
+
+import os
+import pandas as pd
+import matplotlib.pyplot as plt
+import textwrap
+from ast import literal_eval
+
+def plot_star_populations_hist2d(folder_path, ellipse_csv, start_index=None, end_index=None, show_labels=True):
+    """
+    Create a 3xN grid of 2D scatter plots from CSV files in the specified folder and ellipse data from another CSV file.
+
+    Parameters
+    ----------
+    folder_path : str
+        Path to the folder containing CSV files with coordinates.
+    ellipse_csv : str
+        Path to the CSV file containing ellipse data.
+    start_index : int, optional
+        Starting index of the subplots to be displayed.
+    end_index : int, optional
+        Ending index of the subplots to be displayed.
+    show_labels : bool, optional
+        Whether to display x and y labels in the plots. Default is True.
+    """
+    # Extract the numeric value (age) from the filename for sorting
+    def extract_age(filename):
+        return float(filename.split('_')[2])
+
+    # Get sorted list of CSV files excluding files with 'INS' in their names
+    csv_files = sorted(
+        [f for f in os.listdir(folder_path) if f.endswith('.csv') and 'INS' not in f],
+        key=extract_age, reverse = True
+    )
+
+    # Get the specified range of files and reverse the order
+    if start_index is not None and end_index is not None:
+        csv_files = csv_files[start_index:end_index + 1]#[::-1]  # Reverse the sliced list
+
+    num_files = len(csv_files)
+    if num_files == 0:
+        print("No CSV files found in the specified range.")
+        return
+
+    # Load ellipse data
+    ellipse_data = pd.read_csv(ellipse_csv)
+
+    # Create a figure with a 3xN grid of subplots
+    fig, axes = plt.subplots(3, num_files, figsize=(num_files * 4, 12))
+    
+    for i, csv_file in enumerate(csv_files):
+        # Load coordinates from CSV file
+        csv_path = os.path.join(folder_path, csv_file)
+        df = pd.read_csv(csv_path)
+        coords = df[['x', 'y', 'z']].values
+
+        # Extract information from the filename
+        file_name = os.path.basename(csv_path)
+        galaxy_name = file_name.split('_')[0]
+        population_id = file_name.split('_')[2]
+        snapshot_number = file_name.split('_')[-1].replace('.csv', '')
+            
+        # Convert snapshot number to redshift
+        redshift = z(snapshot_number, '/DFS-L/DATA/cosmo/grenache/omyrtaj/fofie/snapshot_times.txt')
+        galaxy_lim = find_global_limit(folder_path) / (1 + redshift) * 1.1
+
+        # Round the first value of each item's Age Range in ellipse_data
+        ellipse_data['Rounded Age'] = ellipse_data['Age Range'].apply(lambda x: round(literal_eval(x)[0], 1))
+        population_age = float(population_id)
+        ellipse_row = ellipse_data[ellipse_data['Rounded Age'] == population_age]
+
+        if not ellipse_row.empty:
+            max_radius = ellipse_row['Max Radius'].values[0]
+            axis_ratios = ellipse_row[['b/a', 'c/a', 'c/b']].values[0]
+            center_of_mass_str = ellipse_row['Center of Mass'].values[0]
+            rotation_matrix_str = ellipse_row['Rotation Matrix'].values[0]
+
+            center_of_mass = preprocess_center_of_mass(center_of_mass_str)
+            rotation_matrix = preprocess_rotation_matrix(rotation_matrix_str)
+
+            ellipse_params_xy = compute_ellipse_params(center_of_mass, max_radius, axis_ratios, rotation_matrix, 'xy')
+            ellipse_params_yz = compute_ellipse_params(center_of_mass, max_radius, axis_ratios, rotation_matrix, 'yz')
+            ellipse_params_zx = compute_ellipse_params(center_of_mass, max_radius, axis_ratios, rotation_matrix, 'zx')
+        else:
+            ellipse_params_xy = ellipse_params_yz = ellipse_params_zx = None
+
+        histogram_2d(coords, 'xy', ax=axes[0, i], show_labels=show_labels, ellipse_params=ellipse_params_xy, lim=galaxy_lim)
+        histogram_2d(coords, 'yz', ax=axes[1, i], show_labels=show_labels, ellipse_params=ellipse_params_yz, lim=galaxy_lim)
+        histogram_2d(coords, 'zx', ax=axes[2, i], show_labels=show_labels, ellipse_params=ellipse_params_zx, lim=galaxy_lim)
+
+    for i, ax in enumerate(axes[0]):
+        file_name = os.path.basename(csv_files[i])
+        galaxy_name = file_name.split('_')[0]
+        population_id = file_name.split('_')[2]
+        pop_end = min(float(population_id) + 0.5, 13.79)
+        snapshot_number = file_name.split('_')[-1].replace('.csv', '')
+
+        redshift = z(snapshot_number, '/DFS-L/DATA/cosmo/grenache/omyrtaj/fofie/snapshot_times.txt')
+        
+        ax.set_title(f"{galaxy_name} Shapes of Stars Born During \n Lookback Time {population_id} - {pop_end} Gyr (z = 0)", fontsize=11)
+
+    row_titles = ['XY Projection', 'YZ Projection', 'ZX Projection']
+    for ax, title in zip(axes[:, 0], row_titles):
+        ax.set_ylabel(title, rotation=90, fontsize=12, labelpad=15)
+
+    plt.tight_layout()
+    plt.show()
+
 
 def plot_evolution_hist2d1(folder_path, ellipse_csv, start_index=None, end_index=None, show_labels=True):
     """
