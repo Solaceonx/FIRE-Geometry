@@ -1377,6 +1377,18 @@ def measure_m12(sim_inputs, snap_num, host=1, age_range = 15):
                     
         star_center, gas_center, halo2 = galaxy_tools.mask_sim_to_halo(
                         star_snapdict, gas_snapdict, halo, orient=False, lim=True, limvalue=halo['rvir'].values[0] * 0.1)
+        star_center, cm = center_mass(star_center)
+        I, A, B, C, _, _, _, _ = reduced_tensor_3d(star_center, 1, 1, 1)
+        A, B, C, Av, Bv, Cv = principal_axes_3d(I)
+        V0 = np.stack([Av, Bv, Cv], axis=-1) 
+        V1 = np.eye(3) 
+        inv_matrix = np.linalg.solve(V0, V1)
+        coords = star_center['Coordinates']
+        coords = np.array(coords)
+        coords_rotated = coords.dot(inv_matrix.T) 
+        star_center['Coordinates'] = coords_rotated
+        star_center_copy = copy.deepcopy(star_center)
+        
         '''star_center, cm = center_mass(star_center)
         I, A, B, C, _, _, _, _ = reduced_tensor_3d(star_center)
         a, b, c = A, B, C
@@ -1384,11 +1396,11 @@ def measure_m12(sim_inputs, snap_num, host=1, age_range = 15):
         V0 = np.stack([Av, Bv, Cv], axis=-1) 
         V1 = np.eye(3) 
         inv_matrix = np.linalg.solve(V0, V1)
-        final_matrix = inv_matrix
-        coords_rotated = np.dot(star['Coordinates'], inv_matrix)
+        # final_matrix = inv_matrix
+        # coords_rotated = np.dot(star_center['Coordinates'], inv_matrix)
         coords_rotated = coords.dot(inv_matrix.T) 
-        coords_rotated = [list(inv_matrix.dot(coord)) for coord in coords]
-        star['Coordinates'] = coords_rotated
+        # coords_rotated = [list(inv_matrix.dot(coord)) for coord in coords]
+        star_center['Coordinates'] = coords_rotated
         '''
         mask_end_time = time.time()
         
@@ -1425,7 +1437,7 @@ def measure_m12(sim_inputs, snap_num, host=1, age_range = 15):
         csv_3d('m12 redshift shapes', individual_output_file, individual_result)
         write_end_time = time.time()
         print(f"Measured galaxy '{sim}' at snapshot '{snap_num}' in {write_end_time - start_time:.2f} seconds")
-        return star_center
+        return star_center_copy
         # print(f"Time taken for loading: {load_end_time - load_start_time:.2f} seconds")
         # print(f"Time taken for masking: {mask_end_time - load_end_time:.2f} seconds")
         

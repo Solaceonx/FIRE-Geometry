@@ -25,6 +25,72 @@ from mpl_toolkits.mplot3d import Axes3D
 # 2d hexbin
 # 3d scatter
 # 3d scatter with ellipsoid - must enter the three axes of the ellipsoid
+import os
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib.cm as cm
+from matplotlib.colors import LinearSegmentedColormap
+
+def truncate_colormap(cmap, minval=0.0, maxval=1.0, n=100):
+    new_cmap = LinearSegmentedColormap.from_list(
+        'truncated_cmap', cmap(np.linspace(minval, maxval, n)))
+    return new_cmap
+
+
+
+def ca_a_scatter(csv_files, title=None):
+    dfs = []
+    for csv_file in csv_files:
+        df = pd.read_csv(csv_file)
+        df['source'] = os.path.basename(csv_file)
+        dfs.append(df)
+    
+    df_all = pd.concat(dfs, ignore_index=True)
+    num_galaxies = len(df_all)
+    
+    required_columns = ['Max Radius', 'c/a', 'Age Range']
+    missing_columns = [col for col in required_columns if col not in df_all.columns]
+    if missing_columns:
+        raise ValueError(f"Missing columns in the dataframe: {', '.join(missing_columns)}")
+    
+    df_all['c/a * Max Radius'] = df_all['c/a'] * df_all['Max Radius']
+    df_all['Max Radius log10'] = df_all['Max Radius']
+    df_all['Age Range Avg'] = df_all['Age Range'].apply(lambda x: np.mean(eval(x)))
+    
+    csfont = {'size': '13'}
+    csfont1 = {'size': '12'}
+    
+    plt.figure(figsize=(8, 6))
+    ax = plt.gca()
+    ax.set_facecolor('black')
+
+    original_cmap = plt.get_cmap('inferno')
+    colormap = truncate_colormap(original_cmap, minval=0.35, maxval=1.0)  # Adjust minval as needed
+
+    min_age = df_all['Age Range Avg'].min()
+    max_age = df_all['Age Range Avg'].max()
+    normalize = plt.Normalize(vmin=min_age, vmax=max_age)
+    
+    scatter = plt.scatter(df_all['Max Radius log10'], df_all['c/a'], c=df_all['Age Range Avg'], cmap=colormap, norm=normalize, alpha=1.0, s=50)
+    
+    cbar = plt.colorbar(scatter)
+    cbar.set_label('Stellar Age (Gyr)', **csfont1)
+    plt.xlabel('Major axis a (kpc)', **csfont1)
+    plt.ylabel('Axis Ratios (c/a)', **csfont1)
+    
+    # Set x-axis and y-axis limits
+    plt.xlim(left=0)
+    plt.ylim(0, 1)
+    
+    if title is None:
+        file_identifiers = [os.path.basename(csv_file).split('.')[0].replace('FIRE', '') for csv_file in csv_files]
+        plt.title(f'FIRE {", ".join(file_identifiers)} 2D Axis Ratios vs. Max Radius (N={num_galaxies})', **csfont)
+    else:
+        plt.title(title, **csfont)
+    
+    plt.show()
+
 
 
 def baca_age1(ax, csv_files, title=None, colorbar = True, ba = True, ca = True):
@@ -84,14 +150,15 @@ def baca_age1(ax, csv_files, title=None, colorbar = True, ba = True, ca = True):
     ax.set_facecolor('black')
     
     # Create a colormap that transitions from blue to red based on Age Range Avg
-    colormap = cm.get_cmap('winter')
+    original_cmap = plt.get_cmap('inferno')
+    colormap = truncate_colormap(original_cmap, minval=0.35, maxval=1.0)  # Adjust minval as needed
     min_age = df_all['Age Range Avg'].min()
     max_age = df_all['Age Range Avg'].max()
     normalize = plt.Normalize(vmin=min_age, vmax=max_age)
     
-    scatter1 = ax.scatter(ba_firebox, ca_firebox, c=df_firebox['Age Range Avg'], alpha=0.8, s=5, cmap='winter', norm=normalize, marker='.', zorder=6, label='FIREBox')
-    scatter2 = ax.scatter(ba_firem10, ca_firem10, c=df_firem10['Age Range Avg'], alpha=1, s=60, cmap='winter', norm=normalize, marker='^', zorder=6, label='FIRE')
-    scatter3 = ax.scatter(ba_fire_m12, ca_fire_m12, c=df_fire_m12['Age Range Avg'], alpha=1, s=60, cmap='winter', norm=normalize, marker='o', zorder=7, label='FIRE_m12')
+    scatter1 = ax.scatter(ba_firebox, ca_firebox, c=df_firebox['Age Range Avg'], alpha=0.8, s=5, cmap=colormap, norm=normalize, marker='.', zorder=6, label='FIREBox')
+    scatter2 = ax.scatter(ba_firem10, ca_firem10, c=df_firem10['Age Range Avg'], alpha=1, s=60, cmap=colormap, norm=normalize, marker='^', zorder=6, label='FIRE')
+    scatter3 = ax.scatter(ba_fire_m12, ca_fire_m12, c=df_fire_m12['Age Range Avg'], alpha=1, s=60, cmap=colormap, norm=normalize, marker='^', zorder=7, label='FIRE_m12')
     if colorbar == True:
         cbar = plt.colorbar(scatter1, ax=ax)
         cbar.set_label('Stellar Age (Gyr)', **csfont1)
@@ -187,15 +254,17 @@ def baca_lookback1(ax, csv_files, title=None, colorbar = True, ba = True, ca = T
     log_mass_fire_m12 = np.log10(mass_fire_m12)
     
     # Create a colormap that transitions from blue to red based on lookback time
-    colormap = cm.get_cmap('winter')
+    colormap = cm.get_cmap('inferno')
+    original_cmap = plt.get_cmap('inferno')
+    colormap = truncate_colormap(original_cmap, minval=0.35, maxval=1.0)  # Adjust minval as needed
     min_lookback_time = df_all['Lookback_Time'].min()
     max_lookback_time = df_all['Lookback_Time'].max()
     normalize = plt.Normalize(vmin=min_lookback_time, vmax=max_lookback_time)
     
     ax.set_facecolor('black')
-    scatter1 = ax.scatter(ba_firebox, ca_firebox, c=df_firebox['Lookback_Time'], alpha=0.8, s=5, cmap='winter', norm=normalize, marker='.', zorder=6, label='FIREBox')
-    scatter2 = ax.scatter(ba_firem10, ca_firem10, c=df_firem10['Lookback_Time'], alpha=1, s=60, cmap='winter', norm=normalize, marker='^', zorder=6, label='FIRE')
-    scatter3 = ax.scatter(ba_fire_m12, ca_fire_m12, c=df_fire_m12['Lookback_Time'], alpha=1, s=60, cmap='winter', norm=normalize, marker='o', zorder=7, label='FIRE_m12')
+    scatter1 = ax.scatter(ba_firebox, ca_firebox, c=df_firebox['Lookback_Time'], alpha=0.8, s=5, cmap=colormap, norm=normalize, marker='.', zorder=6, label='FIREBox')
+    scatter2 = ax.scatter(ba_firem10, ca_firem10, c=df_firem10['Lookback_Time'], alpha=1, s=60, cmap=colormap, norm=normalize, marker='^', zorder=6, label='FIRE')
+    scatter3 = ax.scatter(ba_fire_m12, ca_fire_m12, c=df_fire_m12['Lookback_Time'], alpha=1, s=60, cmap=colormap, norm=normalize, marker='o', zorder=7, label='FIRE_m12')
     if colorbar == True:
         cbar = plt.colorbar(scatter1, ax=ax)
         cbar.set_label('Lookback Time (Gyr)', fontsize=13)
@@ -310,23 +379,23 @@ def baloga_3d(csv_files):
     # {", ".join(file_identifiers)}
     plt.show()
 
-def baloga_2d(csv_files):
+def baloga_2d(csv_files, title):
     file_identifiers = [os.path.basename(csv_file).split('.')[0].replace('FIRE', '') for csv_file in csv_files]
 
     dfs = [pd.read_csv(csv_file) for csv_file in csv_files]
     df = pd.concat(dfs, ignore_index=True)
     num_galaxies = len(df)
 
-    required_columns = ['Max Radius', 'b/a']
+    required_columns = ['Max Radius', 'c/a']
     missing_columns = [col for col in required_columns if col not in df.columns]
     if missing_columns:
         raise ValueError(f"Missing columns in the dataframe: {', '.join(missing_columns)}")
 
-    df['b/a * Max Radius'] = df['b/a'] * df['Max Radius']
-    max_radius = df['b/a * Max Radius'].tolist()
+    df['c/a * Max Radius'] = df['c/a'] * df['Max Radius']
+    max_radius = df['c/a * Max Radius'].tolist()
     max_radius = np.log10(max_radius)
 
-    combined_list = df['b/a'].tolist()
+    combined_list = df['c/a'].tolist()
 
     csfont = {'size': '15'}
     csfont1 = { 'size': '13'}
@@ -336,7 +405,9 @@ def baloga_2d(csv_files):
     plt.colorbar(label='Frequency')
     plt.xlabel('Max Radius', **csfont1)
     plt.ylabel('Axis Ratios', **csfont1)
-    plt.title(f'FIRE {", ".join(file_identifiers)} 2D Axis Ratios vs. log10 of Max Radius (N={num_galaxies})', **csfont)
+    if title is None:
+        plt.title(f'FIRE {", ".join(file_identifiers)} 2D Axis Ratios vs. log10 of Max Radius (N={num_galaxies})', **csfont)
+    else: plt.title(title)
 
     plt.show()
 
@@ -497,14 +568,14 @@ def baca_age(csv_files, title=None):
     ax.set_facecolor('black')
     
     # Create a colormap that transitions from blue to red based on the sorted row index
-    colormap = cm.get_cmap('winter')
+    colormap = cm.get_cmap('inferno')
     min_age = df_all['Age Range Avg'].min()
     max_age = df_all['Age Range Avg'].max()
     normalize = plt.Normalize(vmin=min_age, vmax=max_age)
     
-    scatter1 = plt.scatter(ba_firebox, ca_firebox, c=df_firebox['Age Range Avg'], alpha=0.8, s=5, cmap='winter', norm=normalize, marker='.', zorder=6, label='FIREBox')
-    scatter2 = plt.scatter(ba_firem10, ca_firem10, c=df_firem10['Age Range Avg'], alpha=1, s=60, cmap='winter', norm=normalize, marker='^', zorder=6, label='FIRE')
-    scatter3 = plt.scatter(ba_fire_m12, ca_fire_m12, c=df_fire_m12['Age Range Avg'], alpha=1, s=60, cmap='winter', norm=normalize, marker='o', zorder=7, label='FIRE_m12')
+    scatter1 = plt.scatter(ba_firebox, ca_firebox, c=df_firebox['Age Range Avg'], alpha=0.8, s=5, cmap='inferno', norm=normalize, marker='.', zorder=6, label='FIREBox')
+    scatter2 = plt.scatter(ba_firem10, ca_firem10, c=df_firem10['Age Range Avg'], alpha=1, s=60, cmap='inferno', norm=normalize, marker='^', zorder=6, label='FIRE')
+    scatter3 = plt.scatter(ba_fire_m12, ca_fire_m12, c=df_fire_m12['Age Range Avg'], alpha=1, s=60, cmap='inferno', norm=normalize, marker='o', zorder=7, label='FIRE_m12')
     
     cbar = plt.colorbar(scatter1)
     cbar.set_label('Stellar Age (Gyr)', **csfont1)
@@ -629,14 +700,14 @@ def baca_lookback(csv_files, title=None):
     ax.set_facecolor('black')
     
     # Create a colormap that transitions from blue to red based on lookback time
-    colormap = cm.get_cmap('winter')
+    colormap = cm.get_cmap('inferno')
     min_lookback_time = df_all['Lookback_Time'].min()
     max_lookback_time = df_all['Lookback_Time'].max()
     normalize = plt.Normalize(vmin=min_lookback_time, vmax=max_lookback_time)
     
-    scatter1 = plt.scatter(ba_firebox, ca_firebox, c=df_firebox['Lookback_Time'], alpha=0.8, s=5, cmap='winter', norm=normalize, marker='.', zorder=6, label='FIREBox')
-    scatter2 = plt.scatter(ba_firem10, ca_firem10, c=df_firem10['Lookback_Time'], alpha=1, s=60, cmap='winter', norm=normalize, marker='^', zorder=6, label='FIRE')
-    scatter3 = plt.scatter(ba_fire_m12, ca_fire_m12, c=df_fire_m12['Lookback_Time'], alpha=1, s=60, cmap='winter', norm=normalize, marker='o', zorder=7, label='FIRE_m12')
+    scatter1 = plt.scatter(ba_firebox, ca_firebox, c=df_firebox['Lookback_Time'], alpha=0.8, s=5, cmap='inferno', norm=normalize, marker='.', zorder=6, label='FIREBox')
+    scatter2 = plt.scatter(ba_firem10, ca_firem10, c=df_firem10['Lookback_Time'], alpha=1, s=60, cmap='inferno', norm=normalize, marker='^', zorder=6, label='FIRE')
+    scatter3 = plt.scatter(ba_fire_m12, ca_fire_m12, c=df_fire_m12['Lookback_Time'], alpha=1, s=60, cmap='inferno', norm=normalize, marker='o', zorder=7, label='FIRE_m12')
     
     cbar = plt.colorbar(scatter1)
     cbar.set_label('Lookback Time (Gyr)', **csfont1)
@@ -968,14 +1039,14 @@ def baca_redshift(csv_files, title=None):
     ax.set_facecolor('black')
     
     # Create a colormap that transitions from blue to red based on redshift
-    colormap = cm.get_cmap('winter')
+    colormap = cm.get_cmap('inferno')
     min_redshift = df_all['Redshift'].min()
     max_redshift = df_all['Redshift'].max()
     normalize = plt.Normalize(vmin=min_redshift, vmax=max_redshift)
     
-    scatter1 = plt.scatter(ba_firebox, ca_firebox, c=df_firebox['Redshift'], alpha=0.8, s=5, cmap='winter', norm=normalize, marker='.', zorder=6, label='FIREBox')
-    scatter2 = plt.scatter(ba_firem10, ca_firem10, c=df_firem10['Redshift'], alpha=1, s=60, cmap='winter', norm=normalize, marker='^', zorder=6, label='FIRE')
-    scatter3 = plt.scatter(ba_fire_m12, ca_fire_m12, c=df_fire_m12['Redshift'], alpha=1, s=60, cmap='winter', norm=normalize, marker='o', zorder=7, label='FIRE_m12')
+    scatter1 = plt.scatter(ba_firebox, ca_firebox, c=df_firebox['Redshift'], alpha=0.8, s=5, cmap='inferno', norm=normalize, marker='.', zorder=6, label='FIREBox')
+    scatter2 = plt.scatter(ba_firem10, ca_firem10, c=df_firem10['Redshift'], alpha=1, s=60, cmap='inferno', norm=normalize, marker='^', zorder=6, label='FIRE')
+    scatter3 = plt.scatter(ba_fire_m12, ca_fire_m12, c=df_fire_m12['Redshift'], alpha=1, s=60, cmap='inferno', norm=normalize, marker='o', zorder=7, label='FIRE_m12')
     
     cbar = plt.colorbar(scatter1)
     cbar.set_label('Redshift', **csfont1)
@@ -1028,16 +1099,11 @@ def baca_redshift(csv_files, title=None):
     ax.spines['left'].set_color('black')
 
     plt.show()
-
-import numpy as np
-import matplotlib.pyplot as plt
-import matplotlib.patches as patches
-
 def histogram_2d(coords, projection='xy', bins=100, lim=None, title=None, ax=None, show_labels=True, cmap='viridis', ellipse_params=None, colorbar=False):
     """
     Create a 2D histogram of the coordinates, with the specified projection and optional axis limits.
     
-    Optionally, add an ellipse to the plot.
+    Optionally, add an ellipse to the plot and a white line labeled '5 kpc' at the bottom.
 
     Parameters
     ----------
@@ -1112,7 +1178,7 @@ def histogram_2d(coords, projection='xy', bins=100, lim=None, title=None, ax=Non
         ax.set_ylabel('')
 
     if title:
-        ax.set_title(title, color='white')
+        ax.set_title(title)
 
     ax.patch.set_facecolor('black')  # Set the background color of the plot area
 
@@ -1138,11 +1204,17 @@ def histogram_2d(coords, projection='xy', bins=100, lim=None, title=None, ax=Non
         )
         ax.add_patch(ellipse)
 
+    # Add a white line labeled '5 kpc' at the bottom left of the plot
+    fixed_position_x = -lim + 0.05 * (2 * lim)  # 5% offset from the left
+    fixed_position_y = -lim + 0.05 * (2 * lim)  # 5% offset from the bottom
+    line_length = 5
+    ax.plot([fixed_position_x, fixed_position_x + line_length], [fixed_position_y, fixed_position_y], color='white', lw=4)
+    ax.text(fixed_position_x + line_length / 2, fixed_position_y + line_length/10, '5 kpc', color='white', fontsize=10, ha='center')
+
+
     return ax
 
-import os
-import pandas as pd
-import numpy as np
+
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 import re
@@ -1254,9 +1326,8 @@ def plot_evolution_hist2d(folder_path, ellipse_csv, show_labels=True):
         # Extract galaxy name from the CSV file name
         galaxy_name = csv_file.split('_')[0]
         snap_num = csv_file.split('_')[-1].replace('.csv', '')
-
-        # Title for the first column
-        title = f"{galaxy_name} (stellar age < 0.1Gyr) projections at snapshot {snap_num}" if i == 0 else None
+        redshift = z(snap_num, '/DFS-L/DATA/cosmo/grenache/omyrtaj/fofie/snapshot_times.txt')
+        galaxy_lim = global_limit / (1 + redshift)
 
         # Get ellipse parameters for the current snapshot
         ellipse_row = ellipse_data[ellipse_data['Snapshot'] == int(snap_num)]
@@ -1277,15 +1348,16 @@ def plot_evolution_hist2d(folder_path, ellipse_csv, show_labels=True):
             ellipse_params_xy = ellipse_params_zx = ellipse_params_yz = None
 
         # Plot projections with titles
-        histogram_2d(coords, 'xy', ax=axes[0, i], title=title, show_labels=show_labels, ellipse_params=ellipse_params_xy, lim=global_limit)
-        histogram_2d(coords, 'zx', ax=axes[1, i], show_labels=show_labels, ellipse_params=ellipse_params_zx, lim=global_limit)
-        histogram_2d(coords, 'yz', ax=axes[2, i], show_labels=show_labels, ellipse_params=ellipse_params_yz, lim=global_limit)
-
+        histogram_2d(coords, 'xy', ax=axes[0, i], title=title, show_labels=show_labels, ellipse_params=ellipse_params_xy, lim=galaxy_lim)
+        histogram_2d(coords, 'zx', ax=axes[1, i], show_labels=show_labels, ellipse_params=ellipse_params_zx, lim=galaxy_lim)
+        histogram_2d(coords, 'yz', ax=axes[2, i], show_labels=show_labels, ellipse_params=ellipse_params_yz, lim=galaxy_lim)
+    axes[0, 0].set_title(f"{galaxy_name} at Lookback Time {lt} Gyr", fontsize=12)
+    
     # Set column titles
     for ax, csv_file in zip(axes[0], csv_files):
         galaxy_name = csv_file.split('_')[0]
         snap_num = int(csv_file.split('_')[-1].replace('.csv', ''))
-
+        
         redshift = z(snap_num, '/DFS-L/DATA/cosmo/grenache/omyrtaj/fofie/snapshot_times.txt')
         lt = round(lookback_time(redshift), 2)
         ax.set_title(f"{galaxy_name} at Lookback Time {lt} Gyr", fontsize=12)
@@ -1299,10 +1371,97 @@ def plot_evolution_hist2d(folder_path, ellipse_csv, show_labels=True):
     plt.tight_layout()
     plt.show()
 
+def plot_evolution_hist2d1(folder_path, ellipse_csv, start_index=None, end_index=None, show_labels=True):
+    """
+    Create a 3xN grid of 2D scatter plots from CSV files in the specified folder and ellipse data from another CSV file.
 
-# Example usage:
-# plot_evolution_hist2d('path/to/folder', 'path/to/ellipse_data.csv')
+    Parameters
+    ----------
+    folder_path : str
+        Path to the folder containing CSV files with coordinates.
+    ellipse_csv : str
+        Path to the CSV file containing ellipse data.
+    start_index : int, optional
+        Starting index of the subplots to be displayed.
+    end_index : int, optional
+        Ending index of the subplots to be displayed.
+    show_labels : bool, optional
+        Whether to display x and y labels in the plots. Default is True.
+    """
+    # Determine the global limit for the axis
+    global_limit = find_global_limit(folder_path)
 
+    # Get sorted list of CSV files excluding files with 'INS' in their names
+    csv_files = sorted([f for f in os.listdir(folder_path) if f.endswith('.csv') and 'INS' not in f])
+    
+    # Get the specified range of files
+    if start_index is not None and end_index is not None:
+        csv_files = csv_files[start_index:end_index + 1]
+
+    num_files = len(csv_files)
+    if num_files == 0:
+        print("No CSV files found in the specified range.")
+        return
+
+    # Load ellipse data
+    ellipse_data = pd.read_csv(ellipse_csv)
+
+    # Create a figure with a 3xN grid of subplots
+    fig, axes = plt.subplots(3, num_files, figsize=(num_files * 4, 12))
+
+    for i, csv_file in enumerate(csv_files):
+        # Load coordinates from CSV file
+        csv_path = os.path.join(folder_path, csv_file)
+        df = pd.read_csv(csv_path)
+        coords = df[['x', 'y', 'z']].values
+
+        # Extract galaxy name from the CSV file name
+        galaxy_name = csv_file.split('_')[0]
+        snap_num = csv_file.split('_')[-1].replace('.csv', '')
+        redshift = z(snap_num, '/DFS-L/DATA/cosmo/grenache/omyrtaj/fofie/snapshot_times.txt')
+        galaxy_lim = global_limit / (1 + redshift)
+
+        # Get ellipse parameters for the current snapshot
+        ellipse_row = ellipse_data[ellipse_data['Snapshot'] == int(snap_num)]
+        if not ellipse_row.empty:
+            max_radius = ellipse_row['Max Radius'].values[0]
+            axis_ratios = ellipse_row[['b/a', 'c/a', 'c/b']].values[0]
+            center_of_mass_str = ellipse_row['Center of Mass'].values[0]
+            rotation_matrix_str = ellipse_row['Rotation Matrix'].values[0]
+
+            # Preprocess the data
+            center_of_mass = preprocess_center_of_mass(center_of_mass_str)
+            rotation_matrix = preprocess_rotation_matrix(rotation_matrix_str)
+
+            ellipse_params_xy = compute_ellipse_params(center_of_mass, max_radius, axis_ratios, rotation_matrix, 'xy')
+            ellipse_params_yz = compute_ellipse_params(center_of_mass, max_radius, axis_ratios, rotation_matrix, 'yz')
+            ellipse_params_zx = compute_ellipse_params(center_of_mass, max_radius, axis_ratios, rotation_matrix, 'zx')
+        else:
+            ellipse_params_xy = ellipse_params_yz = ellipse_params_zx = None
+
+        # Plot projections with titles
+        histogram_2d(coords, 'xy', ax=axes[0, i], show_labels=show_labels, ellipse_params=ellipse_params_xy, lim=galaxy_lim)
+        histogram_2d(coords, 'yz', ax=axes[1, i], show_labels=show_labels, ellipse_params=ellipse_params_yz, lim=galaxy_lim)
+        histogram_2d(coords, 'zx', ax=axes[2, i], show_labels=show_labels, ellipse_params=ellipse_params_zx, lim=galaxy_lim)
+
+    # Set column titles for the first column only (XY projections)
+    for i, ax in enumerate(axes[0]):
+        csv_file = csv_files[i]
+        galaxy_name = csv_file.split('_')[0]
+        snap_num = int(csv_file.split('_')[-1].replace('.csv', ''))
+
+        redshift = z(snap_num, '/DFS-L/DATA/cosmo/grenache/omyrtaj/fofie/snapshot_times.txt')
+        lt = round(lookback_time(redshift), 2)
+        ax.set_title(f"{galaxy_name} at Lookback Time {lt} Gyr", fontsize=12)
+
+    # Set row titles
+    row_titles = ['XY Projection', 'YZ Projection', 'ZX Projection']
+    for ax, title in zip(axes[:, 0], row_titles):
+        ax.set_ylabel(title, rotation=90, fontsize=12, labelpad=15)
+
+    # Adjust layout
+    plt.tight_layout()
+    plt.show()
 
 
 def scatter_2d(coords, projection='xy', lim=None, title=None, ax=None, show_labels=False):
@@ -1372,55 +1531,78 @@ def scatter_2d(coords, projection='xy', lim=None, title=None, ax=None, show_labe
     
     return ax
 
-def plot_evolution_scatter(folder_path, show_labels=True):
+def plot_evolution_hist2d(folder_path, ellipse_csv, show_labels=True):
     """
-    Create 2D scatter plots for all CSV files in the specified folder and arrange them in a 3xN grid.
+    Create a 3xN grid of 2D scatter plots from CSV files in the specified folder and ellipse data from another CSV file.
 
     Parameters
     ----------
     folder_path : str
-        Path to the folder containing CSV files.
+        Path to the folder containing CSV files with coordinates.
+    ellipse_csv : str
+        Path to the CSV file containing ellipse data.
     show_labels : bool, optional
-        Whether to display x and y labels in the scatter plots. Default is True.
-    
-    Returns
-    -------
-    None
-        Displays the plots.
+        Whether to display x and y labels in the plots. Default is True.
     """
-    # List all CSV files in the folder and sort by name
-    # csv_files = sorted([f for f in os.listdir(folder_path) if f.endswith('.csv')])
-    csv_files = sorted([f for f in os.listdir(folder_path) if f.endswith('.csv') and 'INS' not in f])
+    # Determine the global limit for the axis
     global_limit = find_global_limit(folder_path)
+
+    # Get sorted list of CSV files excluding files with 'INS' in their names
+    csv_files = sorted([f for f in os.listdir(folder_path) if f.endswith('.csv') and 'INS' not in f])
+
     num_files = len(csv_files)
     if num_files == 0:
         print("No CSV files found in the specified folder.")
         return
-    
+
+    # Load ellipse data
+    ellipse_data = pd.read_csv(ellipse_csv)
+
     # Create a figure with a 3xN grid of subplots
     fig, axes = plt.subplots(3, num_files, figsize=(num_files * 4, 12))
-    
     for i, csv_file in enumerate(csv_files):
         # Load coordinates from CSV file
         csv_path = os.path.join(folder_path, csv_file)
         df = pd.read_csv(csv_path)
         coords = df[['x', 'y', 'z']].values
-        
+
         # Extract galaxy name from the CSV file name
         galaxy_name = csv_file.split('_')[0]
         snap_num = csv_file.split('_')[-1].replace('.csv', '')
-        title = f"{galaxy_name} (stellar age < 0.1Gyr) projections at snapshot {snap_num}"
-        
+        redshift = z(snap_num, '/DFS-L/DATA/cosmo/grenache/omyrtaj/fofie/snapshot_times.txt')
+        galaxy_lim = global_limit / (1 + redshift)
+        # Title for the first column
+        title = f"{galaxy_name} (stellar age < 0.1Gyr) projections at snapshot {snap_num}" if i == 0 else None
+
+        # Get ellipse parameters for the current snapshot
+        ellipse_row = ellipse_data[ellipse_data['Snapshot'] == int(snap_num)]
+        if not ellipse_row.empty:
+            max_radius = ellipse_row['Max Radius'].values[0]
+            axis_ratios = ellipse_row[['b/a', 'c/a', 'c/b']].values[0]
+            center_of_mass_str = ellipse_row['Center of Mass'].values[0]
+            rotation_matrix_str = ellipse_row['Rotation Matrix'].values[0]
+
+            # Preprocess the data
+            center_of_mass = preprocess_center_of_mass(center_of_mass_str)
+            rotation_matrix = preprocess_rotation_matrix(rotation_matrix_str)
+
+            ellipse_params_xy = compute_ellipse_params(center_of_mass, max_radius, axis_ratios, rotation_matrix, 'xy')
+            ellipse_params_zx = compute_ellipse_params(center_of_mass, max_radius, axis_ratios, rotation_matrix, 'zx')
+            ellipse_params_yz = compute_ellipse_params(center_of_mass, max_radius, axis_ratios, rotation_matrix, 'yz')
+        else:
+            ellipse_params_xy = ellipse_params_zx = ellipse_params_yz = None
+
         # Plot projections with titles
-        scatter_2d(coords, 'xy', ax=axes[0, i], title=title if i == 0 else None, show_labels=show_labels, lim = global_limit)
-        scatter_2d(coords, 'zx', ax=axes[1, i], show_labels=show_labels, lim = global_limit)
-        scatter_2d(coords, 'yz', ax=axes[2, i], show_labels=show_labels, lim = global_limit)
-    
-    # Set column titles
-    for ax, csv_file in zip(axes[0], csv_files):
+        histogram_2d(coords, 'xy', ax=axes[0, i], title=title, show_labels=show_labels, ellipse_params=ellipse_params_xy, lim=galaxy_lim)
+        histogram_2d(coords, 'zx', ax=axes[1, i], show_labels=show_labels, ellipse_params=ellipse_params_zx, lim=galaxy_lim)
+        histogram_2d(coords, 'yz', ax=axes[2, i], show_labels=show_labels, ellipse_params=ellipse_params_yz, lim=galaxy_lim)
+
+    # Set column titles for XY projections
+    for i, ax in enumerate(axes[0]):
+        csv_file = csv_files[i]
         galaxy_name = csv_file.split('_')[0]
         snap_num = int(csv_file.split('_')[-1].replace('.csv', ''))
-
+        
         redshift = z(snap_num, '/DFS-L/DATA/cosmo/grenache/omyrtaj/fofie/snapshot_times.txt')
         lt = round(lookback_time(redshift), 2)
         ax.set_title(f"{galaxy_name} at Lookback Time {lt} Gyr", fontsize=12)
@@ -1433,7 +1615,6 @@ def plot_evolution_scatter(folder_path, show_labels=True):
     # Adjust layout
     plt.tight_layout()
     plt.show()
-
 
 
 
