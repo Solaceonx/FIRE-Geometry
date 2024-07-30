@@ -642,7 +642,7 @@ def iter_RIT_3d(star_input, max_iterations=30, tolerance=1e-3, initial_max_radiu
     Returns
     -------
     result : dict or None
-        A dictionary containing the final values of the principal axes ('a', 'b', 'c'),
+        A dictionary containing the final values of the prrincipal axes ('a', 'b', 'c'),
         the axis ratios b/a and c/a, the ellipticity and triaxiality of the ellipsoid, 
         the number of iterations performed ('iterations'), the number of remaining 
         particles after the iterations ('remaining_particles'), and the maximum 
@@ -1057,7 +1057,7 @@ def partition_age(star_center_copy, age_partitions):
 
     
 
-def find_galaxy_shape3d(sim_inputs, output_file, snap_num_input=1200, host_num = 1, rvir_scales=[0.1], particle_fractions=[1.0], repeats=1, FIREBox=0, min_particles = 1000, age_partitions = None):
+def find_galaxy_shape3d(sim_inputs, output_file, snap_num_input=1200, host_num = 1, rvir_scales=[0.1], particle_fractions=[1.0], repeats=1, FIREBox=0, min_particles = 1000, age_partitions = None, save_data = 0):
     """
     Analyze the shape of galaxies from simulation data and save the results to a CSV file.
 
@@ -1122,7 +1122,39 @@ def find_galaxy_shape3d(sim_inputs, output_file, snap_num_input=1200, host_num =
                         star_center_copy = copy.deepcopy(star_center)
                         # print(f"The smallest value in 'StellarAge' is {min(star_center_copy['StellarAge'])} and the largest value is {max(star_center_copy['StellarAge'])}")
                         partitioned_star = partition_age(star_center_copy, age_partitions)
-                        for partition in partitioned_star:
+                        for idx, partition in enumerate(partitioned_star):
+                            if save_data == 1:
+                                folder_path = '3D shapes/particle_data/'  # Update this to your folder path
+                                csv_file_name = f'{sim}_particle_data_{idx+1}.csv' 
+                                csv_file_path = os.path.join(folder_path, csv_file_name)
+                                data = partition.get('ParticleIDs', [])
+                                
+                                # Print the structure of `data` to understand its format
+                                print(f'Partition {idx+1}:')
+                                print(data)
+
+                                # If data is a numpy array or list of scalars
+                                if isinstance(data, (list, np.ndarray)):
+                                    # If data is a numpy array, convert it to a list
+                                    if isinstance(data, np.ndarray):
+                                        data = data.tolist()
+
+                                    # Create a list of dictionaries where each dictionary contains a single ID
+                                    data_dicts = [{'ParticleID': id} for id in data]
+
+                                    # Check if data_dicts is not empty
+                                    if data_dicts:
+                                        headers = data_dicts[0].keys()
+                                        with open(csv_file_path, 'w', newline='') as file:
+                                            writer = csv.DictWriter(file, fieldnames=headers)
+                                            writer.writeheader()
+                                            writer.writerows(data_dicts)
+                                        print(f'Data saved to {csv_file_path}')
+                                    else:
+                                        print('No data to save.')
+                                else:
+                                    print('No data to save or data is in an unexpected format.')
+
                             result = iter_RIT_3d(partition, particle_fraction=j, particle_bound = min_particles)
                             if result:
                                 results.append({
@@ -1439,8 +1471,8 @@ def measure_m12age(sim_inputs, snap_num, host=1, age_range = 15, age_range2 = [[
             
             print('measured galaxy ' + str(sim) + 'with stellar population: ' + str(i))
             
-            csv_3d('m12 redshift shapes', individual_output_file, individual_result)
-            csv_file = 'm12 redshift shapes/romeo_03/romeo_coords_' + str(start_age) +'_' + str(snap_num) + '.csv'
+            csv_3d('m12_redshift_shapes', individual_output_file, individual_result)
+            csv_file = 'm12_redshift_shapes/romeo_03/romeo_coords_' + str(start_age) +'_' + str(snap_num) + '.csv'
             save_coordinates(star_center, csv_file)
             write_end_time = time.time()
             print(f"Measured galaxy '{sim}' at snapshot '{snap_num}' in {write_end_time - start_time:.2f} seconds")
@@ -1559,7 +1591,7 @@ def measure_m12(sim_inputs, snap_num, host=1, age_range = 15):
         
         print('measured galaxy ' + str(sim))
         
-        csv_3d('m12 redshift shapes', individual_output_file, individual_result)
+        csv_3d('m12_redshift_shapes', individual_output_file, individual_result)
         write_end_time = time.time()
         print(f"Measured galaxy '{sim}' at snapshot '{snap_num}' in {write_end_time - start_time:.2f} seconds")
         return star_center_copy

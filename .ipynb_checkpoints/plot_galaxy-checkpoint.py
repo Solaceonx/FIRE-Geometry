@@ -539,6 +539,15 @@ def baca_age(csv_files, title=None):
     
     # Calculate the average of each Age Range
     df_all['Age Range Avg'] = df_all['Age Range'].apply(lambda x: np.mean(eval(x)))
+    df_all['Age Range Transformed'] = df_all['Age Range'].apply(
+        lambda x: [round(val, 2) for val in eval(x)]
+    )
+    
+    # Create custom title for each point
+    df_all['Custom Title'] = df_all['Age Range Transformed'].apply(
+        lambda x: f"Lookback Time: {x} Gyr"
+    )
+
     
     # Sort by the Age Range Avg
     df_all = df_all.sort_values(by='Age Range Avg').reset_index(drop=True)
@@ -572,19 +581,25 @@ def baca_age(csv_files, title=None):
     ax.set_facecolor('black')
     
     # Create a colormap that transitions from blue to red based on the sorted row index
-    colormap = cm.get_cmap('inferno')
     min_age = df_all['Age Range Avg'].min()
     max_age = df_all['Age Range Avg'].max()
     normalize = plt.Normalize(vmin=min_age, vmax=max_age)
-    
-    scatter1 = plt.scatter(ba_firebox, ca_firebox, c=df_firebox['Age Range Avg'], alpha=0.8, s=5, cmap='inferno', norm=normalize, marker='.', zorder=6, label='FIREBox')
-    scatter2 = plt.scatter(ba_firem10, ca_firem10, c=df_firem10['Age Range Avg'], alpha=1, s=60, cmap='inferno', norm=normalize, marker='^', zorder=6, label='FIRE')
-    scatter3 = plt.scatter(ba_fire_m12, ca_fire_m12, c=df_fire_m12['Age Range Avg'], alpha=1, s=60, cmap='inferno', norm=normalize, marker='o', zorder=7, label='FIRE_m12')
+    original_cmap = plt.get_cmap('inferno')
+    colormap = truncate_colormap(original_cmap, minval=0.35, maxval=1.0)  # Adjust minval as needed
+    scatter1 = plt.scatter(ba_firebox, ca_firebox, c=df_firebox['Age Range Avg'], alpha=0.8, s=5, cmap=colormap, norm=normalize, marker='.', zorder=6, label='FIREBox')
+    scatter2 = plt.scatter(ba_firem10, ca_firem10, c=df_firem10['Age Range Avg'], alpha=1, s=60, cmap=colormap, norm=normalize, marker='^', zorder=6, label='FIRE')
+    scatter3 = plt.scatter(ba_fire_m12, ca_fire_m12, c=df_fire_m12['Age Range Avg'], alpha=1, s=60, cmap=colormap, norm=normalize, marker='o', zorder=7, label='FIRE_m12')
     
     cbar = plt.colorbar(scatter1)
     cbar.set_label('Stellar Age (Gyr)', **csfont1)
     
-    plt.legend(loc='best')
+    for idx, row in df_all.iterrows():
+        ba = row['b/a']
+        ca = row['c/a']
+        age_range_avg = row['Age Range Avg']
+        custom_title = row['Custom Title']
+        plt.annotate(custom_title, (ba, ca), textcoords="offset points", xytext=(-15,0), ha='right', fontsize=10, weight='bold', color='white')
+    # plt.legend(loc='best')
     
     plt.xlabel('b/a', color='black', **csfont1)
     plt.ylabel('c/a', color='black', **csfont1)
@@ -622,9 +637,9 @@ def baca_age(csv_files, title=None):
     plt.plot(center[0] + radius * np.cos(theta), center[1] + radius * np.sin(theta), color='white', linestyle='-', zorder=5)
     plt.fill_between(center[0] + radius * np.cos(theta), center[1] + radius * np.sin(theta), color='black', zorder=1)
     
-    plt.text(0.7, 0.11, 'Disky', **csfont2, alpha=0.8, zorder=7, color='white')
-    plt.text(0.3, 0.11, 'Elongated', **csfont2, alpha=0.8, zorder=7, color='white')
-    plt.text(0.76, 0.72, 'Spheroidal', **csfont2, alpha=0.8, zorder=7, color='white')
+    plt.text(0.7, 0.11, 'Disky', **csfont2, alpha=0.6, zorder=7, color='white')
+    plt.text(0.3, 0.11, 'Elongated', **csfont2, alpha=0.6, zorder=7, color='white')
+    plt.text(0.76, 0.72, 'Spheroidal', **csfont2, alpha=0.6, zorder=7, color='white')
     
     ax.tick_params(colors='black', which='both')
     ax.spines['top'].set_color('black')
@@ -1272,7 +1287,7 @@ def compute_ellipse_params(center_of_mass, max_radius, axis_ratios, rotation_mat
         major = max_radius
         minor = max_radius * axis_ratios[1]  # c/a
         angle = np.arctan2(rotation_matrix[2, 0], rotation_matrix[0, 0]) * 180 / np.pi
-        angle = 90
+        angle = 0
     elif projection == 'yz':
         major = max_radius * axis_ratios[0]  # b/a
         minor = max_radius * axis_ratios[1]  # c/a
@@ -1366,7 +1381,8 @@ def plot_evolution_hist2d(folder_path, ellipse_csv, show_labels=True):
         # Plot projections with titles
         histogram_2d(coords, 'xy', ax=axes[0, i], title=title, show_labels=show_labels, ellipse_params=ellipse_params_xy, lim=galaxy_lim)
         histogram_2d(coords, 'zx', ax=axes[1, i], show_labels=show_labels, ellipse_params=ellipse_params_zx, lim=galaxy_lim)
-        histogram_2d(coords, 'yz', ax=axes[2, i], show_labels=show_labels, ellipse_params=ellipse_params_yz, lim=galaxy_lim)
+        rotated_coords = coords[:, [2, 0]]  # Switch the Z and X coordinates
+        histogram_2d(rotated_coords, 'zx', ax=axes[2, i], show_labels=show_labels, ellipse_params=ellipse_params_zx, lim=galaxy_lim)
     axes[0, 0].set_title(f"{galaxy_name} at Lookback Time {lt} Gyr", fontsize=12)
     
     # Set column titles
@@ -1393,7 +1409,7 @@ import matplotlib.pyplot as plt
 import textwrap
 from ast import literal_eval
 
-def plot_star_populations_hist2d(folder_path, ellipse_csv, start_index=None, end_index=None, show_labels=True):
+def plot_star_populations_hist2d(folder_path, ellipse_csv, start_index=None, end_index=None, show_labels=True, save = False):
     """
     Create a 3xN grid of 2D scatter plots from CSV files in the specified folder and ellipse data from another CSV file.
 
@@ -1473,7 +1489,8 @@ def plot_star_populations_hist2d(folder_path, ellipse_csv, start_index=None, end
 
         histogram_2d(coords, 'xy', ax=axes[0, i], show_labels=show_labels, ellipse_params=ellipse_params_xy, lim=galaxy_lim)
         histogram_2d(coords, 'yz', ax=axes[1, i], show_labels=show_labels, ellipse_params=ellipse_params_yz, lim=galaxy_lim)
-        histogram_2d(coords, 'zx', ax=axes[2, i], show_labels=show_labels, ellipse_params=ellipse_params_zx, lim=galaxy_lim)
+        rotated_coords = coords[:, [2, 0]]  # Switch the Z and X coordinates
+        histogram_2d(rotated_coords, 'zx', ax=axes[2, i], show_labels=show_labels, ellipse_params=ellipse_params_zx, lim=galaxy_lim)
 
     for i, ax in enumerate(axes[0]):
         file_name = os.path.basename(csv_files[i])
@@ -1486,12 +1503,18 @@ def plot_star_populations_hist2d(folder_path, ellipse_csv, start_index=None, end
         
         ax.set_title(f"{galaxy_name} Shapes of Stars Born During \n Lookback Time {population_id} - {pop_end} Gyr (z = 0)", fontsize=11)
 
-    row_titles = ['XY Projection', 'YZ Projection', 'ZX Projection']
+    row_titles = ['XY Projection', 'YZ Projection', 'XZ Projection']
     for ax, title in zip(axes[:, 0], row_titles):
         ax.set_ylabel(title, rotation=90, fontsize=12, labelpad=15)
 
     plt.tight_layout()
-    plt.show()
+    if save:
+        # Save the figure as a PNG file
+        output_path = os.path.join(folder_path, 'evolution_hist2d' + str(start_index) + str(end_index)+'.png')
+        plt.savefig(output_path, dpi=300)
+        print(f"Figure saved as {output_path}")
+    else:
+        plt.show()
 
 
 def plot_evolution_hist2d1(folder_path, ellipse_csv, start_index=None, end_index=None, show_labels=True):
@@ -1565,8 +1588,8 @@ def plot_evolution_hist2d1(folder_path, ellipse_csv, start_index=None, end_index
         # Plot projections with titles
         histogram_2d(coords, 'xy', ax=axes[0, i], show_labels=show_labels, ellipse_params=ellipse_params_xy, lim=galaxy_lim)
         histogram_2d(coords, 'yz', ax=axes[1, i], show_labels=show_labels, ellipse_params=ellipse_params_yz, lim=galaxy_lim)
-        histogram_2d(coords, 'zx', ax=axes[2, i], show_labels=show_labels, ellipse_params=ellipse_params_zx, lim=galaxy_lim)
-
+        rotated_coords = coords[:, [2, 0]]  # Switch the Z and X coordinates
+        histogram_2d(rotated_coords, 'zx', ax=axes[2, i], show_labels=show_labels, ellipse_params=ellipse_params_zx, lim=galaxy_lim)
     # Set column titles for the first column only (XY projections)
     for i, ax in enumerate(axes[0]):
         csv_file = csv_files[i]
@@ -1578,7 +1601,7 @@ def plot_evolution_hist2d1(folder_path, ellipse_csv, start_index=None, end_index
         ax.set_title(f"{galaxy_name} at Lookback Time {lt} Gyr", fontsize=12)
 
     # Set row titles
-    row_titles = ['XY Projection', 'YZ Projection', 'ZX Projection']
+    row_titles = ['XY Projection', 'YZ Projection', 'XZ Projection']
     for ax, title in zip(axes[:, 0], row_titles):
         ax.set_ylabel(title, rotation=90, fontsize=12, labelpad=15)
 
